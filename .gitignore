@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+ENV/
+
+# Environment & secrets
+.env
+*.json
+!crawlers/**/schema*.json
+
+# GCP / Google credentials
+service-account*.json
+credentials*.json
+token*.json
+oauth*.json
+
+# Downloaded/temp artifacts
+/tmp/
+*.pdf
+*.png
+*.jpg
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project-specific excludes
+boardbooks_crawler/
+CLAUDE.md
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Jupyter
+.ipynb_checkpoints/
+
+# pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
