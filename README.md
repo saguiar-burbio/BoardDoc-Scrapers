@@ -124,34 +124,198 @@ district_platform_crawlers/
 
 Credentials are bootstrapped via GCP Secret Manager (`doc_collection_schema_manager` for writes, `DOCUMENTS_READER_POSTGRES` for read-only cross-schema checks).
 
-**`doc_collection`** (write) — core crawler tables:
+#### `doc_collection` (write)
 
-| Table | Purpose |
-|---|---|
-| `districts` | One row per NCES district (identity) |
-| `district_configs` | One row per (district, platform, crawler_type); holds `link`, `check_date`, `last_crawl` |
-| `batch_runs` | One row per full crawler invocation; tracks duration and district counts |
-| `meetings` | One row per scraped meeting; links to `district_configs` |
-| `crawl_attachments` | Per-attachment outcome log with SHA-256, MinHash BIGINT[], dupe metadata |
-| `minhash_lsh_index` | LSH band index over `crawl_attachments` for O(candidates) soft-dupe lookup |
-| `uploaded_documents` | Docs that passed dedup and were uploaded to Drive |
-| `ai_calls` | Per-Gemini-call cost log; rates from `model_pricing` |
-| `document_responses` | Structured JSON extracted by AI (JSONB) |
-| `cover_pages` | Cover page metadata per agenda item |
-| `error_logs` | Crawler errors with platform, type, stack trace |
-| `contacts` | Board contacts extracted from meeting pages |
-| `prompts` | Versioned prompts; active version controlled by `is_active` flag |
-| `drive_folders` | Drive folder ID registry (replaces hardcoded constants) |
-| `model_pricing` | AI model cost rates (replaces hardcoded rates) |
-| `crawler_run_log` | Daily per-district run summary (formerly `overall_sbd_log`) |
+```
+districts
+  nces_id        TEXT  PK
+  district_name  TEXT
+  state          CHAR(2)
+  created_at     TIMESTAMPTZ  DEFAULT NOW()
+  updated_at     TIMESTAMPTZ  DEFAULT NOW()
 
-**`documents`** (read-only) — validation pipeline output:
+district_configs
+  district_config_id  SERIAL  PK
+  nces_id             TEXT    FK → districts.nces_id
+  platform            TEXT    CHECK IN ('BOARDBOOK','DILIGENT','BOARDDOCS','SIMBLI','DISTRICT_WEBSITE')
+  crawler_type        TEXT    CHECK IN ('super','icon','legacy_ctrl_f','budget','strategic','spending')
+  link                TEXT    NOT NULL
+  check_date          DATE
+  status              TEXT    DEFAULT 'active'  CHECK IN ('active','inactive')
+  last_crawl          TIMESTAMPTZ
+  created_at          TIMESTAMPTZ  DEFAULT NOW()
+  updated_at          TIMESTAMPTZ  DEFAULT NOW()
+  UNIQUE (nces_id, platform, crawler_type)
 
-| Table | Purpose |
-|---|---|
-| `pdfs` | Validated canonical documents; SHA-256 checked to skip re-uploads |
-| `quarantine` | Rejected documents; SHA-256 checked to skip re-downloads |
-| `duplicate_whitelist` | Per-document MinHash bypass allowlist |
+batch_runs
+  batch_run_id         SERIAL  PK
+  platform             TEXT    NOT NULL
+  crawler_type         TEXT    NOT NULL
+  worker_processes     SMALLINT
+  total_districts      INT
+  districts_succeeded  INT
+  districts_errored    INT
+  started_at           TIMESTAMPTZ  DEFAULT NOW()
+  completed_at         TIMESTAMPTZ
+  notes                TEXT
+  created_at           TIMESTAMPTZ  DEFAULT NOW()
+  updated_at           TIMESTAMPTZ  DEFAULT NOW()
+
+meetings
+  meeting_id          SERIAL  PK
+  nces_id             TEXT    FK → districts.nces_id
+  district_config_id  INT     FK → district_configs.district_config_id
+  platform            TEXT    DEFAULT 'UNKNOWN'
+  meeting_date        TEXT
+  meeting_link        TEXT
+  meeting_type        TEXT
+  created_at          TIMESTAMPTZ  DEFAULT NOW()
+  updated_at          TIMESTAMPTZ  DEFAULT NOW()
+
+crawl_attachments
+  attachment_id   SERIAL  PK
+  meeting_id      INT     FK → meetings.meeting_id
+  nces_id         TEXT
+  file_name       TEXT
+  sha256_hash     TEXT
+  minhash         BIGINT[]
+  is_duplicate    BOOLEAN  DEFAULT FALSE
+  dupe_type       TEXT     CHECK IN ('hash','minhash')   -- NULL when not a dupe
+  dupe_similarity NUMERIC(5,4)                           -- NULL when not a dupe; 1.0 for hash dupes
+  created_at      TIMESTAMPTZ  DEFAULT NOW()
+  updated_at      TIMESTAMPTZ  DEFAULT NOW()
+
+minhash_lsh_index
+  lsh_id        SERIAL  PK
+  source_table  TEXT    -- 'crawl_attachments'
+  source_id     INT     -- FK → crawl_attachments.attachment_id
+  band_number   INT     -- 0–15 (16 bands of 8 ints from 128-perm MinHash)
+  band_hash     TEXT    -- MD5 of the band's 8 integers
+  created_at    TIMESTAMPTZ  DEFAULT NOW()
+
+uploaded_documents
+  document_id       SERIAL  PK
+  meeting_id        INT     FK → meetings.meeting_id
+  attachment_id     INT     FK → crawl_attachments.attachment_id
+  nces_id           TEXT
+  file_name         TEXT
+  drive_file_id     TEXT
+  drive_folder      TEXT
+  sha256_hash       TEXT
+  minhash           BIGINT[]
+  documents_pdfs_id INT     -- backfilled by trigger when documents.pdfs row is inserted
+  created_at        TIMESTAMPTZ  DEFAULT NOW()
+  updated_at        TIMESTAMPTZ  DEFAULT NOW()
+
+ai_calls
+  ai_call_id    SERIAL  PK
+  meeting_id    INT     FK → meetings.meeting_id
+  attachment_id INT     FK → crawl_attachments.attachment_id
+  nces_id       TEXT
+  prompt_id     INT     FK → prompts.prompt_id
+  model_name    TEXT
+  input_tokens  INT
+  output_tokens INT
+  cost_usd      NUMERIC(12,8)
+  response_json JSONB
+  created_at    TIMESTAMPTZ  DEFAULT NOW()
+
+document_responses
+  response_id    SERIAL  PK
+  ai_call_id     INT     FK → ai_calls.ai_call_id
+  document_id    INT     FK → uploaded_documents.document_id
+  extracted_data JSONB
+  created_at     TIMESTAMPTZ  DEFAULT NOW()
+
+cover_pages
+  cover_page_id  SERIAL  PK
+  meeting_id     INT     FK → meetings.meeting_id
+  nces_id        TEXT
+  file_name      TEXT
+  minhash        BIGINT[]
+  created_at     TIMESTAMPTZ  DEFAULT NOW()
+  updated_at     TIMESTAMPTZ  DEFAULT NOW()
+
+error_logs
+  error_id     SERIAL  PK
+  meeting_id   INT     FK → meetings.meeting_id  (nullable)
+  nces_id      TEXT
+  platform     TEXT
+  error_type   TEXT
+  message      TEXT
+  stack_trace  TEXT
+  is_resolved  BOOLEAN  DEFAULT FALSE
+  resolved_at  TIMESTAMPTZ
+  resolved_by  TEXT
+  created_at   TIMESTAMPTZ  DEFAULT NOW()
+
+contacts
+  contact_id  SERIAL  PK
+  nces_id     TEXT
+  name        TEXT
+  title       TEXT
+  created_at  TIMESTAMPTZ  DEFAULT NOW()
+  updated_at  TIMESTAMPTZ  DEFAULT NOW()
+  UNIQUE (nces_id, name, title)
+
+prompts
+  prompt_id    SERIAL  PK
+  prompt_name  TEXT
+  version      INT
+  prompt_text  TEXT
+  is_active    BOOLEAN  DEFAULT FALSE
+  created_at   TIMESTAMPTZ  DEFAULT NOW()
+  updated_at   TIMESTAMPTZ  DEFAULT NOW()
+  UNIQUE (prompt_name) WHERE is_active = TRUE   -- partial index; one active row per name
+
+drive_folders
+  drive_folder_name  TEXT  PK   -- 'MINUTES', 'BUDGET', 'STRATEGIC_PLANNING', etc.
+  drive_folder_id    TEXT  NOT NULL
+  description        TEXT
+  is_active          BOOLEAN  DEFAULT TRUE
+  created_at         TIMESTAMPTZ  DEFAULT NOW()
+  updated_at         TIMESTAMPTZ  DEFAULT NOW()
+
+model_pricing
+  model_name          TEXT  PK
+  input_usd_per_1k    NUMERIC(12,8)  NOT NULL
+  output_usd_per_1k   NUMERIC(12,8)  NOT NULL
+  effective_from      DATE  DEFAULT CURRENT_DATE
+  effective_until     DATE  -- NULL means currently active
+  created_at          TIMESTAMPTZ  DEFAULT NOW()
+  updated_at          TIMESTAMPTZ  DEFAULT NOW()
+
+crawler_run_log                        -- formerly overall_sbd_log
+  crawler_run_id  SERIAL  PK
+  batch_run_id    INT     FK → batch_runs.batch_run_id  (nullable)
+  nces_id         TEXT
+  crawler_type    TEXT
+  docs_found      INT
+  docs_uploaded   INT
+  docs_duped      INT
+  notes           TEXT
+  created_at      TIMESTAMPTZ  DEFAULT NOW()
+  updated_at      TIMESTAMPTZ  DEFAULT NOW()
+  UNIQUE (nces_id, DATE(created_at), crawler_type)
+```
+
+#### `documents` (read-only)
+
+```
+pdfs
+  id        SERIAL  PK
+  checksum  TEXT    -- SHA-256; checked in db_check_sha256_dupe
+
+quarantine
+  id        SERIAL  PK
+  checksum  TEXT    -- SHA-256; checked in db_check_sha256_dupe
+
+duplicate_whitelist
+  id              SERIAL  PK
+  whitelist_type  TEXT    -- 'checksum' triggers MinHash bypass in db_check_minhash_dupe
+  whitelist_value TEXT
+  folder_name     TEXT
+```
 
 ## Adding a New Crawler
 
