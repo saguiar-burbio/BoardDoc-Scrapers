@@ -11,6 +11,28 @@ Headless Selenium crawlers for scraping school district board meeting documents 
 | BoardDocs | `crawlers/boarddocs/` | Parallel |
 | Simbli eBoard | `crawlers/simbli/` | Parallel |
 
+## VM / GitHub Workflow
+
+The VM is connected to the `saguiar-burbio/BoardDoc-Scrapers` repository. Always run Git commands from inside the project folder:
+
+```bash
+cd BoardDoc-Scrapers
+```
+
+**Pull latest changes from GitHub to the VM** (most common — after pushing from your local machine):
+```bash
+git pull
+```
+
+**Push changes made on the VM back to GitHub:**
+```bash
+git add .
+git commit -m "Updated scrapers on VM"
+git push origin main
+```
+
+---
+
 ## Setup
 
 **Prerequisites (Ubuntu Server):**

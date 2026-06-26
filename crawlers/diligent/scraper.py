@@ -33,16 +33,21 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from config.settings import MINUTES_FOLDER_ID, MODEL_NAME
+from config.settings import MODEL_NAME
 from core.analyzer import analyze_pdf_with_gemini_with_retry
 from core.database import (
     db_check_minhash_dupe,
     db_check_sha256_dupe,
+    get_drive_folder_map,
     get_prompt_info,
     log_ai_usage,
     log_crawl_attachment,
     log_error_to_db,
 )
+
+
+def _get_folder_id(name: str) -> str:
+    return get_drive_folder_map().get(name, "")
 from core.document_utils import (
     _cover_page_is_policy,
     build_unique_filename,
@@ -412,7 +417,7 @@ def _process_single_attachment(
             final_name = build_unique_filename(base_name)
 
             uploaded_file_id = upload_file_to_folder(
-                drive_service, MINUTES_FOLDER_ID, filepath, final_name
+                drive_service, _get_folder_id("MINUTES"), filepath, final_name
             )
             LOGGER.info(
                 f"  ✅ [Minutes] Uploaded: "

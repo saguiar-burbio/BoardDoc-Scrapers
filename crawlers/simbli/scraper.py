@@ -36,18 +36,9 @@ from selenium.webdriver.support.ui import WebDriverWait
 # ── Core infrastructure imports ───────────────────────────────────────────────
 from config.settings import (
     BUCKET_NAME,
-    BUDGET_FOLDER_ID,
-    BOND_FOLDER_ID,
-    CALENDAR_FOLDER_ID,
     DOWNLOAD_DIR,
-    GOVERNANCE_FOLDER_ID,
-    MANUAL_INTERVENTION_FOLDER_ID,
-    MINUTES_FOLDER_ID,
     MODEL_NAME,
     MINHASH_SIM_THRESHOLD,
-    SPEND_FOLDER_ID,
-    STRAT_FOLDER_ID,
-    SUPPORTING_FOLDER_ID,
 )
 from core.analyzer import analyze_pdf_with_gemini_with_retry
 from core.database import (
@@ -55,6 +46,7 @@ from core.database import (
     db_check_minhash_dupe,
     db_check_sha256_dupe,
     get_db_connection,
+    get_drive_folder_map,
     get_prompt_info,
     log_ai_usage,
     log_attachment_to_db,
@@ -66,6 +58,10 @@ from core.database import (
     log_to_crawler_hash,
     log_uploaded_document,
 )
+
+
+def _get_folder_id(name: str) -> str:
+    return get_drive_folder_map().get(name, "")
 from core.document_utils import (
     _cover_page_is_policy,
     build_unique_filename,
@@ -791,7 +787,7 @@ def combine_and_upload_documents(
                     fiscal_year = result_data.get("fiscal_year", "NA")
                     base_name = f"{nces}_{district_upper}_{fiscal_year}_{budget_type}.pdf"
                     file_name_final = build_unique_filename(base_name)
-                    uid = upload_file_to_folder(drive_service, BUDGET_FOLDER_ID, merged_path, file_name_final)
+                    uid = upload_file_to_folder(drive_service, _get_folder_id("BUDGET"), merged_path, file_name_final)
                     file_url = f"https://drive.google.com/file/d/{uid}/view?usp=sharing"
                     LOGGER.info(f"  ✅ [BUDGET] Uploaded: {file_url}")
                     meeting_record.downloaded += 1
@@ -817,7 +813,7 @@ def combine_and_upload_documents(
                     end_year   = result_data.get("end_year", "NA")
                     base_name = f"{nces}_{district_upper}_{start_year}-{end_year}_{doc_type}.pdf"
                     file_name_final = build_unique_filename(base_name)
-                    uid = upload_file_to_folder(drive_service, STRAT_FOLDER_ID, merged_path, file_name_final)
+                    uid = upload_file_to_folder(drive_service, _get_folder_id("STRATEGIC_PLANNING"), merged_path, file_name_final)
                     file_url = f"https://drive.google.com/file/d/{uid}/view?usp=sharing"
                     LOGGER.info(f"  ✅ [STRAT] Uploaded: {file_url}")
                     meeting_record.downloaded += 1
@@ -847,7 +843,7 @@ def combine_and_upload_documents(
                     else:
                         base_name = f"{nces}_{district_upper}_{f_p}-{bond_type}_{bond_year}.pdf"
                     file_name_final = build_unique_filename(base_name)
-                    uid = upload_file_to_folder(drive_service, BOND_FOLDER_ID, merged_path, file_name_final)
+                    uid = upload_file_to_folder(drive_service, _get_folder_id("BOND_LEVY"), merged_path, file_name_final)
                     file_url = f"https://drive.google.com/file/d/{uid}/view?usp=sharing"
                     LOGGER.info(f"  ✅ [BOND] Uploaded: {file_url}")
                     meeting_record.downloaded += 1
@@ -871,7 +867,7 @@ def combine_and_upload_documents(
                     calendar_year = result_data.get("academic_year", "NA")
                     base_name = f"{nces}_{district_upper}_CALENDAR_{calendar_year}.pdf"
                     file_name_final = build_unique_filename(base_name)
-                    uid = upload_file_to_folder(drive_service, CALENDAR_FOLDER_ID, merged_path, file_name_final)
+                    uid = upload_file_to_folder(drive_service, _get_folder_id("CALENDAR"), merged_path, file_name_final)
                     file_url = f"https://drive.google.com/file/d/{uid}/view?usp=sharing"
                     LOGGER.info(f"  ✅ [CALENDAR] Uploaded: {file_url}")
                     meeting_record.downloaded += 1
@@ -897,7 +893,7 @@ def combine_and_upload_documents(
                 doc_type = result_data.get("document_type", "Spending")
                 base_name = f"{nces}_{district_upper}_{file_date}_{doc_type}.pdf"
                 file_name_final = build_unique_filename(base_name)
-                uid = upload_file_to_folder(drive_service, SPEND_FOLDER_ID, merged_path, file_name_final)
+                uid = upload_file_to_folder(drive_service, _get_folder_id("SPENDING"), merged_path, file_name_final)
                 file_url = f"https://drive.google.com/file/d/{uid}/view?usp=sharing"
                 LOGGER.info(f"  ✅ [SPENDING] Uploaded: {file_url}")
                 meeting_record.downloaded += 1
@@ -923,11 +919,11 @@ def combine_and_upload_documents(
                 file_name_final = build_unique_filename(base_name)
 
                 if extracted_cat == "SUPPORT":
-                    folder = MANUAL_INTERVENTION_FOLDER_ID
+                    folder = _get_folder_id("MANUAL_INTERVENTION")
                 elif extracted_cat in ("GOVERNANCE", "NON-RELEVANT"):
-                    folder = GOVERNANCE_FOLDER_ID
+                    folder = _get_folder_id("GOVERNANCE")
                 else:
-                    folder = SUPPORTING_FOLDER_ID
+                    folder = _get_folder_id("SUPPORTING")
 
                 uid = upload_file_to_folder(drive_service, folder, merged_path, file_name_final)
                 file_url = f"https://drive.google.com/file/d/{uid}/view?usp=sharing"
@@ -1172,7 +1168,7 @@ def _process_single_attachment(
                 _ocr_pdf(filepath, ocr_out)
                 filepath = ocr_out
 
-                uid = upload_file_to_folder(drive_service, MINUTES_FOLDER_ID, filepath, file_name_final)
+                uid = upload_file_to_folder(drive_service, _get_folder_id("MINUTES"), filepath, file_name_final)
                 file_url = f"https://drive.google.com/file/d/{uid}/view?usp=sharing"
                 LOGGER.info(f"  ✅ [MINUTES] Uploaded: {file_url}")
 

@@ -27,14 +27,19 @@ from selenium.common.exceptions import (
     InvalidSessionIdException,
 )
 
-from config.settings import MODEL_NAME, MINUTES_FOLDER_ID
+from config.settings import MODEL_NAME
 from core.database import (
     db_check_sha256_dupe,
     db_check_minhash_dupe,
+    get_drive_folder_map,
     get_prompt_info,
     db_get_filename_count,
     log_crawl_attachment,
 )
+
+
+def _get_folder_id(name: str) -> str:
+    return get_drive_folder_map().get(name, "")
 from core.driver import (
     _is_session_alive,
     wait_for_download,
@@ -300,7 +305,7 @@ def _process_single_attachment(
             final_name = build_unique_filename(f"{nces}_{district_upper}_{doc_type}_{final_date}.pdf")
 
             from __main__ import drive_service
-            file_id = upload_file_to_folder(drive_service, MINUTES_FOLDER_ID, final_path, final_name)
+            file_id = upload_file_to_folder(drive_service, _get_folder_id("MINUTES"), final_path, final_name)
 
             LOGGER.info(f"[{district}] | [UPLOAD] {final_name} → {file_id}")
             meeting_record.downloaded += 1

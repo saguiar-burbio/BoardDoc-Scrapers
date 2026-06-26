@@ -32,16 +32,21 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
-from config.settings import MINUTES_FOLDER_ID, MODEL_NAME
+from config.settings import MODEL_NAME
 from core.analyzer import analyze_pdf_with_gemini_with_retry
 from core.database import (
     db_check_minhash_dupe,
     db_check_sha256_dupe,
+    get_drive_folder_map,
     get_prompt_info,
     log_ai_usage,
     log_crawl_attachment,
     log_error_to_db,
 )
+
+
+def _get_folder_id(name: str) -> str:
+    return get_drive_folder_map().get(name, "")
 from core.document_utils import (
     _cover_page_is_policy,
     build_unique_filename,
@@ -360,7 +365,7 @@ def _download_boarddocs_minutes_icon(
 ) -> None:
     """
     If the page exposes a minutes icon button (id='btn-view-minutes-id'), click it,
-    download the resulting PDF, classify with Gemini, and upload to MINUTES_FOLDER_ID.
+    download the resulting PDF, classify with Gemini, and upload to _get_folder_id("MINUTES").
     Mutates meeting_record in-place.
     """
     file_date      = row_date.strftime("%m-%d-%y")
@@ -470,7 +475,7 @@ def _download_boarddocs_minutes_icon(
         file_name_final = build_unique_filename(base_name)
 
         uploaded_file_id = upload_file_to_folder(
-            drive_service, MINUTES_FOLDER_ID, icon_tmp_path, file_name_final
+            drive_service, _get_folder_id("MINUTES"), icon_tmp_path, file_name_final
         )
         LOGGER.info(
             f"  [BD Minutes Icon] ✅ Uploaded: "
@@ -664,7 +669,7 @@ def _process_single_attachment(
                 file_name_final = build_unique_filename(base_name)
 
                 uploaded_file_id = upload_file_to_folder(
-                    drive_service, MINUTES_FOLDER_ID, filepath, file_name_final
+                    drive_service, _get_folder_id("MINUTES"), filepath, file_name_final
                 )
                 LOGGER.info(
                     f"  ✅ [Minutes] Uploaded: "
