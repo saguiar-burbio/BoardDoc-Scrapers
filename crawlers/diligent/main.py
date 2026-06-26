@@ -11,6 +11,7 @@ import re
 import tempfile
 import time
 import traceback
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from typing import List, Optional, Set, Tuple
 
@@ -27,25 +28,33 @@ from config.settings import (
     CSV_OUTPUT_PATH_NAME,
     CRED_PATH_NAME,
     DOWNLOAD_DIR,
-    SPREADSHEET_ID,
-    TAB_NAME,
 )
 from core.database import (
     get_all_prompts_df,
     load_all_db_credentials,
+    log_error_to_db,
     log_meeting_to_db,
     log_to_overall_sbd_log,
 )
 from core.driver import create_undetected_driver
 from core.gcs import download_blob_to_tmp
 from core.google_auth import get_authenticated_services
-from core.google_functions import log_doc_info
 from core.humanize import random_idle
 from core.models import AttachmentRecord, MeetingRecord
 from core.utils import debug_summarize_run_stats, setup_logger
 from crawlers.diligent.scraper import search_and_download_agenda_attachments
 
 LOGGER = setup_logger(log_level="INFO")
+
+# Tune to available CPU cores / RAM (2 is safe; 4 viable on 8-core / ≥16 GB).
+WORKER_PROCESSES = 2
+# Set to False to run districts sequentially (useful for debugging).
+PARALLEL_ENABLED = True
+
+drive_service = None
+
+# Shared prompt DataFrame — set in __main__ before ProcessPoolExecutor fork.
+_SHARED_PROMPT_DF = None
 
 
 # =============================================================================
@@ -102,7 +111,7 @@ def parse_meeting_info(text: str) -> Tuple[str, str]:
 # SECTION 2 — PER-DISTRICT PIPELINE
 # =============================================================================
 
-def main(
+def run_district(
     nces:        str,
     district:    str,
     link:        str,
@@ -141,12 +150,7 @@ def main(
             time.sleep(5)
         except Exception as e:
             LOGGER.error(f"[{district}] ❌ Failed to reach Meetings page: {e}")
-            log_doc_info(
-                sheets_service, SPREADSHEET_ID, TAB_NAME,
-                nces, district, "",
-                "Could not reach Meetings page", ctrl_f_term,
-                url=link,
-            )
+            log_error_to_db(error_type="NAV_ERROR", message="Could not reach Meetings page", nces_id=nces)
             return meeting_records
 
         try:
@@ -162,12 +166,7 @@ def main(
             )
         except TimeoutException:
             LOGGER.error(f"[{district}] ❌ Recent Meetings list did not load.")
-            log_doc_info(
-                sheets_service, SPREADSHEET_ID, TAB_NAME,
-                nces, district, "",
-                "Could not find Meetings Element — Bad Link?", ctrl_f_term,
-                url=link,
-            )
+            log_error_to_db(error_type="NAV_ERROR", message="Could not find Meetings Element — Bad Link?", nces_id=nces)
             return meeting_records
 
         last_date = datetime.strptime(check_date, "%m-%d-%y")
@@ -229,12 +228,7 @@ def main(
                     meeting_date_formatted = datetime.strptime(meeting_date_str, "%m-%d-%y")
                 except Exception as e:
                     LOGGER.warning(f"  Could not parse date from '{display_title}': {e}")
-                    log_doc_info(
-                        sheets_service, SPREADSHEET_ID, TAB_NAME,
-                        nces, district, "UNKNOWN",
-                        "Unformatted title or meeting date", ctrl_f_term,
-                        url=meeting_url, paragraph_text=display_title,
-                    )
+                    log_error_to_db(error_type="PARSE_ERROR", message=f"Unformatted title or meeting date: {display_title[:200]}", nces_id=nces)
                     continue
 
                 LOGGER.info(
@@ -314,7 +308,39 @@ def main(
 
 
 # =============================================================================
-# SECTION 3 — BATCH RUNNER
+# SECTION 3 — PARALLEL WORKER ENTRY POINT
+# =============================================================================
+
+def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
+    """Top-level function executed inside each child process."""
+    idx, nces, district, link, last_meeting_date, ctrl_f_term = task
+    prompt_df = _SHARED_PROMPT_DF
+
+    worker_logger = setup_logger(log_level="INFO")
+    worker_logger.info(f"[Worker PID {os.getpid()}] Starting: {district} (row {idx})")
+
+    try:
+        load_all_db_credentials()
+
+        startup_delay = (idx % WORKER_PROCESSES) * 6 + random.uniform(0, 2)
+        if startup_delay > 0:
+            worker_logger.info(f"[Worker PID {os.getpid()}] Staggered startup: {startup_delay:.1f}s")
+            time.sleep(startup_delay)
+
+        records = run_district(
+            nces=nces, district=district, link=link,
+            prompt_df=prompt_df, ctrl_f_term=ctrl_f_term,
+            check_date=last_meeting_date,
+        )
+        return (nces, district, records, None)
+
+    except Exception as e:
+        worker_logger.error(f"[Worker PID {os.getpid()}] Fatal error for '{district}': {e}")
+        return (nces, district, [], str(e))
+
+
+# =============================================================================
+# SECTION 4 — BATCH RUNNER
 # =============================================================================
 
 if __name__ == "__main__":
@@ -334,7 +360,7 @@ if __name__ == "__main__":
     load_all_db_credentials()
 
     LOGGER.info("Authenticating Google Drive and Sheets...")
-    drive_service, sheets_service = get_authenticated_services(CRED_PATH, TOKEN_PATH)
+    drive_service, _ = get_authenticated_services(CRED_PATH, TOKEN_PATH)
     LOGGER.info("✅ Google services authenticated.")
 
     # Inject drive_service into the scraper module so upload_file_to_folder can use it.

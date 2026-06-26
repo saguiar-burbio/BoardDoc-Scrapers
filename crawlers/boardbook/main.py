@@ -30,8 +30,6 @@ from config.settings import (
     CSV_OUTPUT_PATH_NAME,
     CRED_PATH_NAME,
     DOWNLOAD_DIR,
-    SPREADSHEET_ID,
-    TAB_NAME,
 )
 from core.gcs import download_blob_to_tmp, upload_file_to_gcs
 from core.models import AttachmentRecord, MeetingRecord
@@ -52,9 +50,8 @@ LOGGER = setup_logger(log_level="INFO")
 # Tune to available CPU cores / RAM (2 is safe; 4 viable on 8-core / ≥16 GB).
 WORKER_PROCESSES = 2
 
-# Global Google service handles resolved in __main__ and used by sub-modules.
-drive_service   = None
-sheets_service  = None
+# Global drive_service resolved in __main__ and injected into scraper sub-module.
+drive_service = None
 
 # Shared prompt DataFrame set in __main__ before ProcessPoolExecutor fork.
 _SHARED_PROMPT_DF = None
@@ -264,8 +261,8 @@ if __name__ == "__main__":
 
     load_all_db_credentials()
 
-    LOGGER.info("Authenticating Google Drive and Sheets...")
-    drive_service, sheets_service = get_authenticated_services(CRED_PATH, TOKEN_PATH)
+    LOGGER.info("Authenticating Google Drive...")
+    drive_service, _ = get_authenticated_services(CRED_PATH, TOKEN_PATH)
     LOGGER.info("✅ Google services authenticated.")
 
     LOGGER.info(f"Loading district CSV: {CSV_INPUT_PATH}")

@@ -615,6 +615,193 @@ def log_contact_to_db(nces_id: str, name: str, email: str, phone: str, title: st
         LOGGER.error(f"DB upsert failed for '{name}': {e}")
 
 
+def db_check_attachment_dupe(sha256_hex: str, pdf_url: str) -> Tuple[bool, Optional[int]]:
+    """
+    Check doc_collection.attachments for an existing row matching either the
+    SHA-256 hash or the exact attachment URL.  Returns (is_dupe, existing_id).
+    """
+    sql = """
+        SELECT id FROM doc_collection.attachments
+        WHERE hash = %(hash)s
+           OR attachment_link = %(url)s
+        LIMIT 1;
+    """
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, {"hash": sha256_hex, "url": pdf_url})
+                row = cur.fetchone()
+        if row:
+            LOGGER.info(f"  db_check_attachment_dupe → DUPE (attachments.id={row[0]})")
+            return True, row[0]
+        LOGGER.debug("  db_check_attachment_dupe → novel")
+        return False, None
+    except Exception as e:
+        LOGGER.error(f"  db_check_attachment_dupe failed (treating as novel): {e}")
+        return False, None
+
+
+def log_attachment_to_db(
+    meeting_id: Optional[int],
+    agenda_url: str,
+    attachment_title: str,
+    attachment_link: str,
+    sha256_hex: str = "",
+    minhash_obj: Optional[Any] = None,
+) -> Optional[int]:
+    """INSERT one row into doc_collection.attachments."""
+    minhash_json = json.dumps(minhash_obj.hashvalues.tolist()) if minhash_obj is not None else None
+
+    sql = """
+        INSERT INTO doc_collection.attachments
+            (meeting_id, agenda_url, attachment_title, attachment_link,
+             hash, minhash, date_added)
+        VALUES
+            (%(meeting_id)s, %(agenda_url)s, %(attachment_title)s,
+             %(attachment_link)s, %(hash)s, %(minhash)s, %(date_added)s)
+        RETURNING id;
+    """
+    params = {
+        "meeting_id":       meeting_id,
+        "agenda_url":       agenda_url,
+        "attachment_title": attachment_title,
+        "attachment_link":  attachment_link,
+        "hash":             sha256_hex or "",
+        "minhash":          minhash_json,
+        "date_added":       datetime.utcnow(),
+    }
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                row = cur.fetchone()
+            conn.commit()
+        attachment_id = row[0] if row else None
+        LOGGER.info(f"  ✅ attachments row inserted — id={attachment_id}")
+        return attachment_id
+    except Exception as e:
+        LOGGER.error(f"  ❌ log_attachment_to_db failed: {e}")
+        LOGGER.debug(traceback.format_exc())
+        return None
+
+
+def log_cover_page_to_db(
+    nces_id: str,
+    meeting_id: Optional[int],
+    agenda_item_text: str,
+    drive_link: str = "",
+    sha256_hex: str = "",
+    minhash_obj: Optional[Any] = None,
+) -> Optional[int]:
+    """INSERT one row into doc_collection.cover_page."""
+    minhash_json = json.dumps(minhash_obj.hashvalues.tolist()) if minhash_obj is not None else None
+
+    sql = """
+        INSERT INTO doc_collection.cover_page
+            (nces_id, meeting_id, agenda_item_text, drive_link,
+             hash, minhash, date_added)
+        VALUES
+            (%(nces_id)s, %(meeting_id)s, %(agenda_item_text)s, %(drive_link)s,
+             %(hash)s, %(minhash)s, %(date_added)s)
+        RETURNING id;
+    """
+    params = {
+        "nces_id":          str(nces_id),
+        "meeting_id":       meeting_id,
+        "agenda_item_text": agenda_item_text,
+        "drive_link":       drive_link or "",
+        "hash":             sha256_hex or "",
+        "minhash":          minhash_json,
+        "date_added":       datetime.utcnow(),
+    }
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                row = cur.fetchone()
+            conn.commit()
+        cover_id = row[0] if row else None
+        LOGGER.info(f"  ✅ cover_page row inserted — id={cover_id}")
+        return cover_id
+    except Exception as e:
+        LOGGER.error(f"  ❌ log_cover_page_to_db failed: {e}")
+        LOGGER.debug(traceback.format_exc())
+        return None
+
+
+def log_document_response_to_db(
+    document_id: Optional[int],
+    usage_id: Optional[int],
+    completion_text: str,
+    extracted_data: dict,
+) -> Optional[int]:
+    """INSERT one row into doc_collection.document_responses."""
+    sql = """
+        INSERT INTO doc_collection.document_responses
+            (document_id, usage_id, completion_text, extracted_data, created_at)
+        VALUES
+            (%(document_id)s, %(usage_id)s, %(completion_text)s,
+             %(extracted_data)s, %(created_at)s)
+        RETURNING id;
+    """
+    params = {
+        "document_id":     document_id,
+        "usage_id":        usage_id,
+        "completion_text": completion_text,
+        "extracted_data":  json.dumps(extracted_data),
+        "created_at":      datetime.utcnow(),
+    }
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                row = cur.fetchone()
+            conn.commit()
+        resp_id = row[0] if row else None
+        LOGGER.debug(f"  ✅ document_responses row inserted — id={resp_id}")
+        return resp_id
+    except Exception as e:
+        LOGGER.error(f"  ❌ log_document_response_to_db failed: {e}")
+        LOGGER.debug(traceback.format_exc())
+        return None
+
+
+def log_error_to_db(
+    error_type: str,
+    message: str,
+    stack_trace: str = "",
+    nces_id: Optional[str] = None,
+    meeting_id: Optional[int] = None,
+    document_id: Optional[int] = None,
+) -> None:
+    """INSERT one row into doc_collection.error_logs. Never raises."""
+    sql = """
+        INSERT INTO doc_collection.error_logs
+            (nces_id, meeting_id, document_id, error_type,
+             message, stack_trace, is_resolved, timestamp)
+        VALUES
+            (%(nces_id)s, %(meeting_id)s, %(document_id)s, %(error_type)s,
+             %(message)s, %(stack_trace)s, FALSE, %(timestamp)s);
+    """
+    params = {
+        "nces_id":     str(nces_id) if nces_id is not None else None,
+        "meeting_id":  meeting_id,
+        "document_id": document_id,
+        "error_type":  error_type[:100],
+        "message":     message[:2000],
+        "stack_trace": stack_trace[:5000],
+        "timestamp":   datetime.utcnow(),
+    }
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+            conn.commit()
+        LOGGER.debug(f"  🪵 error_logs row inserted: {error_type}")
+    except Exception as e:
+        LOGGER.critical(f"  ❌ log_error_to_db itself failed: {e}")
+
+
 def log_crawl_attachment(
     meeting_id: Optional[int],
     nces_id: str,

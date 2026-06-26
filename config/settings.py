@@ -27,7 +27,9 @@ BUCKET_NAME = "plasma-matter-398213"
 
 # GCS Object Storage Path Ingress/Egress Pointers
 CSV_INPUT_PATH_NAME  = "Simbli/super_crawler/Crawlers - super_crawler_bb_test.csv"
-DILIGENT_CSV_INPUT_PATH_NAME = "Diligent/input/diligent_districts.csv"
+DILIGENT_CSV_INPUT_PATH_NAME  = "Diligent/input/diligent_districts.csv"
+BOARDDOCS_CSV_INPUT_PATH_NAME = "Simbli/Crawlers - BD Part 1.csv"
+SIMBLI_CSV_INPUT_PATH_NAME   = "Simbli/Crawlers - Simbli CTRL F.csv"
 CSV_OUTPUT_PATH_NAME = "Simbli/output.csv"
 CRED_PATH_NAME       = "JsonKeys/google_sam.json"
 
@@ -48,9 +50,6 @@ MANUAL_INTERVENTION_FOLDER_ID = "1JPj8GzYLW8TWdTylIAvOYRr_PHyNSN3g"
 SUPPORTING_FOLDER_ID          = "13W5LjI-Mrrl88bkvoXFf3pV5nzyN6kg2"
 CALENDAR_FOLDER_ID            = "190Idm3DvsjetYHELqrmv9DeyWDICaBRD"
 
-# Google Sheets Log Metadata Infrastructure Identifier
-SPREADSHEET_ID = "14rABw4KQL3yOOe17sTJ05m6mE8TEe2GSqJ-aj3S_j-c"
-TAB_NAME       = "Simbli - CTRL F"
 
 # =====================================================================
 # 4. DATABASE RESOURCE MANAGER ROUTING RESOURCE KEYS
