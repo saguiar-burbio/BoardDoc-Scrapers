@@ -356,3 +356,4 @@ No changes to `core/` or `config/` are needed unless the new platform requires n
 - **Simbli Chrome session died** — `InvalidSessionIdException` is caught automatically; the driver restarts and retries the same meeting row.
 - **`get_drive_folder_map` returns empty dict** — `doc_collection.drive_folders` table is empty or `is_active = FALSE` on all rows. Seed the table per `TODO.md`.
 - **`get_all_prompts_df` returns empty DataFrame** — No prompt rows have `is_active = TRUE`. Run `UPDATE doc_collection.prompts SET is_active = TRUE WHERE ...` for the desired versions.
+- **`invalid input value for enum doc_collection.dupe_source: "crawl_attachments"`** — The `dupe_source` enum is missing the `'crawl_attachments'` value. Run: `ALTER TYPE doc_collection.dupe_source ADD VALUE 'crawl_attachments';`
