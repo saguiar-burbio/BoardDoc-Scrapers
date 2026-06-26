@@ -1004,19 +1004,18 @@ def upsert_district_config(
     link: str,
     check_date: str,
 ) -> Optional[int]:
-    """Upserts doc_collection.districts + district_configs; returns district_config_id."""
-    upsert_district_sql = """
-        INSERT INTO doc_collection.districts (nces_id, district_name)
-        VALUES (%s, %s)
-        ON CONFLICT (nces_id) DO UPDATE SET district_name = EXCLUDED.district_name
-        RETURNING nces_id;
-    """
+    """Upserts district_configs via core.districts FK; returns district_config_id."""
+    core_districts_id = get_core_district_id(nces_id)
+    if core_districts_id is None:
+        LOGGER.warning(f"  upsert_district_config: nces={nces_id} not found in core.districts — skipping")
+        return None
+
     config_sql = """
         INSERT INTO doc_collection.district_configs
-            (nces_id, platform, crawler_type, link, check_date)
+            (core_districts_id, nces_id, platform, crawler_type, link, check_date)
         VALUES
-            (%(nces_id)s, %(platform)s, %(crawler_type)s, %(link)s, %(check_date)s)
-        ON CONFLICT (nces_id, platform, crawler_type) DO UPDATE SET
+            (%(core_districts_id)s, %(nces_id)s, %(platform)s, %(crawler_type)s, %(link)s, %(check_date)s)
+        ON CONFLICT (core_districts_id, platform, crawler_type) DO UPDATE SET
             link       = EXCLUDED.link,
             check_date = EXCLUDED.check_date,
             updated_at = NOW()
@@ -1032,13 +1031,13 @@ def upsert_district_config(
 
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute(upsert_district_sql, (nces_id, district_name))
                 cur.execute(config_sql, {
-                    "nces_id":      nces_id,
-                    "platform":     platform,
-                    "crawler_type": crawler_type,
-                    "link":         link,
-                    "check_date":   parsed_date,
+                    "core_districts_id": core_districts_id,
+                    "nces_id":           int(nces_id),
+                    "platform":          platform,
+                    "crawler_type":      crawler_type,
+                    "link":              link,
+                    "check_date":        parsed_date,
                 })
                 row = cur.fetchone()
             conn.commit()
