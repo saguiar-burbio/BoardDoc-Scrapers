@@ -40,6 +40,7 @@ from core.database import (
     get_prompt_info,
     log_ai_usage,
     log_crawl_attachment,
+    log_error_to_db,
 )
 from core.document_utils import (
     _cover_page_is_policy,
@@ -907,6 +908,13 @@ def search_and_download_agenda_attachments(
         except Exception as e:
             LOGGER.error(f"  ❌ Failed item '{raw_text}': {e}")
             LOGGER.debug(traceback.format_exc())
+            log_error_to_db(
+                error_type="AGENDA_ITEM_ERROR",
+                message=str(e)[:2000],
+                stack_trace=traceback.format_exc(),
+                nces_id=nces,
+                meeting_id=meeting_id,
+            )
 
         finally:
             if cover_path and os.path.exists(cover_path):

@@ -40,15 +40,9 @@ DOWNLOAD_DIR = os.path.join(os.path.expanduser("~"), DOWNLOAD_DIR_NAME)
 # =====================================================================
 # 3. ARCHIVAL STORAGE - GOOGLE DRIVE TARGET FOLDER INSTANCE IDS
 # =====================================================================
-MINUTES_FOLDER_ID             = "1VeNIZGxzfGkgigafp0nskKL6qL8HLOSC"
-BUDGET_FOLDER_ID              = "12Q5AkrPgF17zv5DEiiR2D4KqYkibSImq"
-STRAT_FOLDER_ID               = "1RooJ4H7NsfxlBZTvbf6kY0spXJpOVqVK"
-BOND_FOLDER_ID                = "B058Su2qPkbcZwrxpD8_5x9EXEp-SnV3"
-SPEND_FOLDER_ID               = "1PbSt3kJPIaPXtAhsAHtDFQPHeXYC6kVA"
-GOVERNANCE_FOLDER_ID          = "1ap85KOePSiwNUWxrN41NAHosftNBVPRm"
-MANUAL_INTERVENTION_FOLDER_ID = "1JPj8GzYLW8TWdTylIAvOYRr_PHyNSN3g"
-SUPPORTING_FOLDER_ID          = "13W5LjI-Mrrl88bkvoXFf3pV5nzyN6kg2"
-CALENDAR_FOLDER_ID            = "190Idm3DvsjetYHELqrmv9DeyWDICaBRD"
+# Drive folder IDs are now stored in doc_collection.drive_folders and
+# loaded at runtime via core.database.get_drive_folder_map().
+# The hardcoded constants have been removed.
 
 
 # =====================================================================

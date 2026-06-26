@@ -17,6 +17,7 @@ class AttachmentRecord:
     dupe_check_type: str            = "—"
     passed_dupe:     Optional[bool] = None
     file_name:       str            = ""
+    db_id:           Optional[int]  = None  # doc_collection.attachments.id
 
 
 @dataclass
@@ -30,3 +31,4 @@ class MeetingRecord:
     dupes:        int = 0
     errors:       int = 0
     attachments:  List[AttachmentRecord] = field(default_factory=list)
+    meeting_id:   Optional[int] = None  # doc_collection.meetings.meeting_id

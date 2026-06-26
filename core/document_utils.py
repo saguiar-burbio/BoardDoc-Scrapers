@@ -21,14 +21,6 @@ from selenium.common.exceptions import StaleElementReferenceException
 import base64
 
 from config.settings import (
-    BUDGET_FOLDER_ID,
-    STRAT_FOLDER_ID,
-    BOND_FOLDER_ID,
-    CALENDAR_FOLDER_ID,
-    SPEND_FOLDER_ID,
-    MANUAL_INTERVENTION_FOLDER_ID,
-    GOVERNANCE_FOLDER_ID,
-    SUPPORTING_FOLDER_ID,
     MODEL_NAME,
     POLICY_RE
 )
@@ -39,8 +31,14 @@ from core.database import (
     log_uploaded_document,
     log_ai_usage,
     log_contact_to_db,
-    get_prompt_info
+    get_prompt_info,
+    get_drive_folder_map,
 )
+
+
+def _get_folder_id(name: str) -> str:
+    """Returns the Drive folder ID for the given folder name from the DB-backed map."""
+    return get_drive_folder_map().get(name, "")
 from core.hashing import (
     compute_sha256_from_file,
     build_minhash
@@ -508,7 +506,7 @@ def combine_and_upload_documents(
         text, page_count = extract_text_with_ocr(merged_path)
 
         minhash_obj = build_minhash(text)
-        minhash_is_dupe, matching_link = db_check_minhash_dupe(minhash_obj)
+        minhash_is_dupe, matching_link = db_check_minhash_dupe(minhash_obj, sha256_hex=file_hash)
         if minhash_is_dupe:
             LOGGER.info(f"   [{district}] | [DUPE] Soft match against: {matching_link}")
             meeting_record.dupes += 1
@@ -555,7 +553,7 @@ def combine_and_upload_documents(
                 meeting_id      = meeting_id,
                 document_id     = document_id,
                 prompt_snapshot = None,
-                response_json   = str(analysis_response.get("result", {})),
+                response_json   = analysis_response.get("result", {}),
             )
 
             meeting_record.downloaded += 1
@@ -588,7 +586,7 @@ def combine_and_upload_documents(
                     file_name_final = build_unique_filename(base_name)
 
                     uploaded_successfully = _upload_and_log(
-                        folder_id=BUDGET_FOLDER_ID, folder_label="BUDGET",
+                        folder_id=_get_folder_id("BUDGET"), folder_label="BUDGET",
                         file_name=file_name_final, category_tag="BUDGET",
                         doc_type="BUDGET", fiscal_year=fiscal_year,
                         prompt_id=prompt_id, analysis_response=analysis_response,
@@ -617,7 +615,7 @@ def combine_and_upload_documents(
                     file_name_final = build_unique_filename(base_name)
 
                     uploaded_successfully = _upload_and_log(
-                        folder_id=STRAT_FOLDER_ID, folder_label="STRATEGIC_PLANNING",
+                        folder_id=_get_folder_id("STRATEGIC_PLANNING"), folder_label="STRATEGIC_PLANNING",
                         file_name=file_name_final, category_tag="STRATEGIC_PLANNING",
                         doc_type=document_type, fiscal_year=f"{start_year}-{end_year}",
                         prompt_id=prompt_id, analysis_response=analysis_response,
@@ -652,7 +650,7 @@ def combine_and_upload_documents(
                     file_name_final = build_unique_filename(base_name)
 
                     uploaded_successfully = _upload_and_log(
-                        folder_id=BOND_FOLDER_ID, folder_label="BOND_LEVY",
+                        folder_id=_get_folder_id("BOND_LEVY"), folder_label="BOND_LEVY",
                         file_name=file_name_final, category_tag="BOND_LEVY",
                         doc_type=f"{f_p}-{bond_type}", fiscal_year=str(bond_year),
                         prompt_id=prompt_id, analysis_response=analysis_response,
@@ -679,7 +677,7 @@ def combine_and_upload_documents(
                     file_name_final = build_unique_filename(base_name)
 
                     uploaded_successfully = _upload_and_log(
-                        folder_id=CALENDAR_FOLDER_ID, folder_label="CALENDAR",
+                        folder_id=_get_folder_id("CALENDAR"), folder_label="CALENDAR",
                         file_name=file_name_final, category_tag="CALENDAR",
                         doc_type="CALENDAR", fiscal_year=str(calendar_year),
                         prompt_id=prompt_id, analysis_response=analysis_response,
@@ -705,7 +703,7 @@ def combine_and_upload_documents(
                 file_name_final = build_unique_filename(base_name)
 
                 _upload_and_log(
-                    folder_id=SPEND_FOLDER_ID, folder_label="SPENDING",
+                    folder_id=_get_folder_id("SPENDING"), folder_label="SPENDING",
                     file_name=file_name_final, category_tag="SPENDING",
                     doc_type=document_type, fiscal_year=None,
                     prompt_id=prompt_id, analysis_response=analysis_response,
@@ -734,15 +732,15 @@ def combine_and_upload_documents(
                 LOGGER.info(f" [{district}] | [SUPPORT AI] category={extracted_cat}")
 
                 if extracted_cat == "SUPPORT":
-                    folder_id, folder_label = MANUAL_INTERVENTION_FOLDER_ID, "MANUAL_INTERVENTION"
+                    folder_id, folder_label = _get_folder_id("MANUAL_INTERVENTION"), "MANUAL_INTERVENTION"
                 elif extracted_cat in (
                     "GOVERNANCE", "NON-RELEVANT", "POLICY", "STUDENT-SERVICES",
                     "PERSONNEL", "LEGAL-POLICY", "FINANCE-OPERATIONS",
                     "FINANCE-REPORTING", "DISCIPLINE", "CURRICULUM-POLICY"
                 ):
-                    folder_id, folder_label = GOVERNANCE_FOLDER_ID, "GOVERNANCE"
+                    folder_id, folder_label = _get_folder_id("GOVERNANCE"), "GOVERNANCE"
                 else:
-                    folder_id, folder_label = SUPPORTING_FOLDER_ID, "SUPPORTING"
+                    folder_id, folder_label = _get_folder_id("SUPPORTING"), "SUPPORTING"
 
                 _upload_and_log(
                     folder_id=folder_id, folder_label=folder_label,

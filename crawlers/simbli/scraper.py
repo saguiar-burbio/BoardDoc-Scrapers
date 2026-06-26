@@ -64,6 +64,7 @@ from core.database import (
     log_error_to_db,
     log_meeting_to_db,
     log_to_crawler_hash,
+    log_uploaded_document,
 )
 from core.document_utils import (
     _cover_page_is_policy,
@@ -1179,6 +1180,18 @@ def _process_single_attachment(
                 att_record.file_name   = file_name_final
                 meeting_record.downloaded += 1
 
+                log_uploaded_document(
+                    meeting_id=meeting_id,
+                    nces_id=nces,
+                    file_name=file_name_final,
+                    drive_folder="MINUTES",
+                    google_drive_url=file_url,
+                    sha256_hash=file_hash,
+                    minhash_obj=minhash_obj,
+                    category="MINUTES",
+                    doc_type=doc_type,
+                    attachment_id=attachment_id,
+                )
                 log_to_crawler_hash(
                     nces_id=int(nces), starting_link=link, pdf_link=pdf_url,
                     downloaded=True, sha256_hex=file_hash, minhash_obj=minhash_obj,

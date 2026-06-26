@@ -46,6 +46,8 @@ logs/
 # Project-specific excludes
 boardbooks_crawler/
 CLAUDE.md
+TODO.md
+notes.txt
 
 # macOS
 .DS_Store

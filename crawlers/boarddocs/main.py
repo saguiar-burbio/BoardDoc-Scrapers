@@ -5,6 +5,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 import logging
+import os
 import random
 import time
 import traceback
@@ -26,6 +27,10 @@ from core.database import (
     log_error_to_db,
     log_meeting_to_db,
     log_to_overall_sbd_log,
+    upsert_district_config,
+    insert_batch_run,
+    close_batch_run,
+    update_district_last_crawl,
 )
 from core.document_utils import classify_doc_type
 from core.driver import create_undetected_driver
@@ -53,12 +58,13 @@ _SHARED_PROMPT_DF = None
 # =============================================================================
 
 def run_district(
-    nces:        str,
-    district:    str,
-    link:        str,
-    prompt_df:   pd.DataFrame,
-    ctrl_f_term: str,
-    check_date:  str = "06-01-25",
+    nces:               str,
+    district:           str,
+    link:               str,
+    prompt_df:          pd.DataFrame,
+    ctrl_f_term:        str,
+    check_date:         str = "06-01-25",
+    district_config_id: Optional[int] = None,
 ) -> List[MeetingRecord]:
     """Run the full BoardDocs scrape pipeline for one district."""
     driver = create_undetected_driver()
@@ -79,7 +85,7 @@ def run_district(
                 f"  [{district}] No meetings found in JSON-LD. "
                 "Verify the URL points to a BoardDocs committee page."
             )
-            log_error_to_db(error_type="NO_MEETINGS", message="No meetings found in JSON-LD", nces_id=nces)
+            log_error_to_db(error_type="NO_MEETINGS", message="No meetings found in JSON-LD", nces_id=nces, platform="BOARDDOCS")
             return meeting_records
 
         last_date = datetime.strptime(check_date, "%m-%d-%y")
@@ -118,10 +124,12 @@ def run_district(
             meeting_type     = classify_doc_type(title)
 
             meeting_id = log_meeting_to_db(
-                nces_id=nces,
-                meeting_date=meeting_date_str,
-                meeting_link=mtg_url,
-                meeting_type=meeting_type,
+                nces_id            = nces,
+                meeting_date       = meeting_date_str,
+                meeting_link       = mtg_url,
+                meeting_type       = meeting_type,
+                platform           = "BOARDDOCS",
+                district_config_id = district_config_id,
             )
 
             meeting_record = MeetingRecord(
@@ -203,7 +211,7 @@ def run_district(
 
 def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
     """Top-level function executed inside each child process."""
-    idx, nces, district, link, last_meeting_date, ctrl_f_term = task
+    idx, nces, district, link, last_meeting_date, ctrl_f_term, district_config_id = task
     prompt_df = _SHARED_PROMPT_DF
 
     worker_logger = setup_logger(log_level="INFO")
@@ -218,9 +226,13 @@ def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
             time.sleep(startup_delay)
 
         records = run_district(
-            nces=nces, district=district, link=link,
-            prompt_df=prompt_df, ctrl_f_term=ctrl_f_term,
-            check_date=last_meeting_date,
+            nces               = nces,
+            district           = district,
+            link               = link,
+            prompt_df          = prompt_df,
+            ctrl_f_term        = ctrl_f_term,
+            check_date         = last_meeting_date,
+            district_config_id = district_config_id,
         )
         return (nces, district, records, None)
 
@@ -249,16 +261,19 @@ if __name__ == "__main__":
 
     load_all_db_credentials()
 
-    LOGGER.info("Authenticating Google Drive and Sheets...")
+    LOGGER.info("Authenticating Google Drive...")
     drive_service, _ = get_authenticated_services(CRED_PATH, TOKEN_PATH)
     LOGGER.info("✅ Google services authenticated.")
 
-    # Inject drive_service into the scraper module
+    # Inject drive_service before forking — workers inherit it via fork.
     bd_scraper.drive_service = drive_service
 
-    df        = pd.read_csv(CSV_INPUT_PATH)
-    prompt_df = get_all_prompts_df()
-    LOGGER.info(f"CSV: {len(df)} district(s). Prompts: {len(prompt_df)} entry/entries.")
+    df = pd.read_csv(CSV_INPUT_PATH)
+
+    _SHARED_PROMPT_DF = get_all_prompts_df()
+    LOGGER.info(f"CSV: {len(df)} district(s). Prompts: {len(_SHARED_PROMPT_DF)} entries.")
+
+    batch_run_id = insert_batch_run("BOARDDOCS", "super", WORKER_PROCESSES)
 
     error_docs = []
     run_stats  = {
@@ -273,11 +288,13 @@ if __name__ == "__main__":
         "total_errors":        0,
     }
 
+    tasks: List[Tuple] = []
+    nces_to_config_id: dict = {}
     for idx, row in df.iterrows():
-        link       = row["Link"]
-        nces       = str(row["NCES ID"])
-        district   = str(row["District Name"]).strip()
-        check_date = str(row["Check Date"]).strip().replace("/", "-")
+        link        = row["Link"]
+        nces        = str(row["NCES ID"])
+        district    = str(row["District Name"]).strip()
+        check_date  = str(row["Check Date"]).strip().replace("/", "-")
         ctrl_f_term = str(row.get("Search Term", "minutes")).strip()
 
         if not ctrl_f_term or ctrl_f_term.lower() == "nan":
@@ -286,44 +303,67 @@ if __name__ == "__main__":
             LOGGER.debug(f"Row {idx}: empty district — skipping.")
             continue
 
-        run_stats["districts_attempted"] += 1
-        LOGGER.info(
-            f"\n{'═'*60}\n"
-            f"Row {idx + 1}/{len(df)} — {district} (NCES: {nces})\n"
-            f"{'═'*60}"
+        district_config_id = upsert_district_config(
+            nces_id=nces, district_name=district, platform="BOARDDOCS",
+            crawler_type="super", link=link, check_date=check_date,
         )
+        nces_to_config_id[nces] = district_config_id
+        tasks.append((idx, nces, district, link, check_date, ctrl_f_term, district_config_id))
 
-        try:
-            district_records = run_district(
-                nces=nces, district=district, link=link,
-                prompt_df=prompt_df, ctrl_f_term=ctrl_f_term,
-                check_date=check_date,
-            )
+    run_stats["total_districts"] = len(tasks)
+    LOGGER.info(
+        f"Dispatching {len(tasks)} district(s) — "
+        f"{'parallel x' + str(WORKER_PROCESSES) if PARALLEL_ENABLED else 'sequential'}."
+    )
+
+    def _handle_result(nces, district, district_records, error_msg):
+        if error_msg:
+            LOGGER.error(f"❌ Fatal failure for '{district}': {error_msg}")
+            error_docs.append((district, error_msg))
+            run_stats["districts_errored"] += 1
+            run_stats["error_districts"].append(district)
+            log_to_overall_sbd_log(nces_id=nces, meeting_records=[], notes=f"CRAWLER FATAL ERROR: {error_msg[:500]}", crawler_type="BOARDDOCS", batch_run_id=batch_run_id)
+        else:
             LOGGER.info(f"✅ {district} completed.")
             run_stats["districts_succeeded"] += 1
-
             for rec in district_records:
                 run_stats["total_attachments"] += rec.total
                 run_stats["total_downloaded"]  += rec.downloaded
                 run_stats["total_dupes"]       += rec.dupes
                 run_stats["total_errors"]      += rec.errors
+            log_to_overall_sbd_log(nces_id=nces, meeting_records=district_records, notes="", crawler_type="BOARDDOCS", batch_run_id=batch_run_id)
+            config_id = nces_to_config_id.get(nces)
+            if config_id:
+                update_district_last_crawl(config_id)
 
-            log_to_overall_sbd_log(
-                nces_id=int(nces), meeting_records=district_records, notes=""
-            )
+    if PARALLEL_ENABLED and WORKER_PROCESSES > 1:
+        with ProcessPoolExecutor(max_workers=WORKER_PROCESSES) as executor:
+            future_to_district = {executor.submit(_worker, task): task[2] for task in tasks}
+            for future in as_completed(future_to_district):
+                district_name = future_to_district[future]
+                run_stats["districts_attempted"] += 1
+                try:
+                    nces, district, district_records, error_msg = future.result()
+                except Exception as e:
+                    LOGGER.error(f"❌ Future failed for '{district_name}': {e}")
+                    LOGGER.debug(traceback.format_exc())
+                    error_docs.append((district_name, str(e)))
+                    run_stats["districts_errored"] += 1
+                    run_stats["error_districts"].append(district_name)
+                    continue
+                _handle_result(nces, district, district_records, error_msg)
+    else:
+        for task in tasks:
+            run_stats["districts_attempted"] += 1
+            nces, district, district_records, error_msg = _worker(task)
+            _handle_result(nces, district, district_records, error_msg)
+            time.sleep(random.uniform(10, 40))
 
-        except Exception as e:
-            LOGGER.error(f"❌ Fatal error for '{district}': {e}")
-            LOGGER.debug(traceback.format_exc())
-            error_docs.append((district, str(e)))
-            run_stats["districts_errored"] += 1
-            run_stats["error_districts"].append(district)
-            log_to_overall_sbd_log(
-                nces_id=int(nces), meeting_records=[],
-                notes=f"CRAWLER ERROR: {str(e)[:500]}",
-            )
-
-        time.sleep(random.uniform(10, 40))
+    close_batch_run(
+        batch_run_id = batch_run_id,
+        succeeded    = run_stats["districts_succeeded"],
+        errored      = run_stats["districts_errored"],
+    )
 
     LOGGER.info(f"\n{'═'*60}\n  BATCH RUN COMPLETE\n{'═'*60}")
     debug_summarize_run_stats(run_stats)
