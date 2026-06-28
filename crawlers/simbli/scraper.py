@@ -288,7 +288,7 @@ def _get_cover_page_pdf(
 
     handles_before = list(driver.window_handles)
     try:
-        # Click Print Options button
+        # ── Step 1: Find the Print Options button ────────────────────────────
         try:
             print_button = WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located(
@@ -301,17 +301,40 @@ def _get_cover_page_pdf(
             LOGGER.warning("  Print dropdown button not found after 15s.")
             return None
 
+        btn_html = driver.execute_script("return arguments[0].outerHTML;", print_button)
+        LOGGER.info(f"  Found print button: {(btn_html or '').strip()[:200]}")
+
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", print_button)
         time.sleep(1)
         safe_click(driver, print_button)
+        time.sleep(2)  # let the Bootstrap/Angular dropdown animate open
 
-        # Click "Print Item" in dropdown (href is javascript:void(0); — match by label text)
-        print_item_link = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable(
-                (By.XPATH,
-                 "//ul[@id='printOptions']//label[normalize-space()='Print Item']/parent::a")
+        # ── Step 2: Click "Print Item" in the dropdown ───────────────────────
+        # Diagnostic: check what's actually in #printOptions before waiting
+        dropdown_els = driver.find_elements(By.ID, "printOptions")
+        if dropdown_els:
+            dd_html = driver.execute_script("return arguments[0].outerHTML;", dropdown_els[0])
+            LOGGER.info(f"  #printOptions HTML: {(dd_html or '').strip()[:400]}")
+        else:
+            LOGGER.warning("  #printOptions element not found in DOM — dropdown may not have opened.")
+
+        try:
+            print_item_link = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable(
+                    (By.XPATH,
+                     "//ul[@id='printOptions']//label[normalize-space()='Print Item']/parent::a")
+                )
             )
-        )
+        except TimeoutException:
+            # Log all anchor text inside any visible dropdown for diagnosis
+            all_dd_links = driver.find_elements(By.CSS_SELECTOR, "#printOptions a, .dropdown-menu a")
+            link_texts = [a.text.strip() for a in all_dd_links]
+            LOGGER.warning(
+                f"  'Print Item' link not clickable after 10s. "
+                f"Links found in dropdown: {link_texts}"
+            )
+            return None
+
         safe_click(driver, print_item_link)
 
         # Handle new tab
