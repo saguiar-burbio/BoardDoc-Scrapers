@@ -74,7 +74,7 @@ def run_district(
         LOGGER.info(
             f"\n{'═'*60}\n"
             f"  BOARDDOCS DISTRICT: {district}  |  NCES: {nces}\n"
-            f"  Link: {link}\n"
+            f"  Link: {link}  |  Check Date: {check_date}\n"
             f"{'═'*60}"
         )
 

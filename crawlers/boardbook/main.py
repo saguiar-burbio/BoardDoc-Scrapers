@@ -93,7 +93,7 @@ def main_district_pipeline(
             LOGGER.error(f"❌ Invalid date format '{check_date}' — defaulting to 06-01-25.")
             last_date = datetime.strptime("06-01-25", "%m-%d-%y")
 
-        LOGGER.info(f"\n{'═'*60}\n DISTRICT PIPELINE START: {district} | NCES: {nces}\n{'═'*60}")
+        LOGGER.info(f"\n{'═'*60}\n DISTRICT PIPELINE START: {district} | NCES: {nces} | Check Date: {check_date}\n{'═'*60}")
         driver.get(link)
         time.sleep(5)
 
