@@ -893,8 +893,9 @@ def combine_and_upload_documents(
                 result_data  = ar.get("result", {})
                 extracted_cat  = result_data.get("category", "SUPPORT")
                 extracted_date = parse_to_mmddyy(file_date)
-                doc_type       = classify_doc_type(meeting_type)
-                base_name = f"{nces}_{district_upper}_{doc_type}-{extracted_cat}_{extracted_date}.pdf"
+                doc_type_code  = classify_doc_type(meeting_type)
+                boe_type       = doc_type_code.split("-")[-1]
+                base_name = f"{nces}_{district_upper}_BOE-AGENDA-{boe_type}-{extracted_cat}_{extracted_date}.pdf"
                 file_name_final = build_unique_filename(base_name)
 
                 if extracted_cat == "SUPPORT":
