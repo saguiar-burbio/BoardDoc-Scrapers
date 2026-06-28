@@ -26,10 +26,10 @@ client = genai.Client(api_key=GEMINI_KEY)
 BUCKET_NAME = "plasma-matter-398213"
 
 # GCS Object Storage Path Ingress/Egress Pointers
-CSV_INPUT_PATH_NAME  = "Simbli/super_crawler/Crawlers - super_crawler_bb_test.csv"
-DILIGENT_CSV_INPUT_PATH_NAME  = "Diligent/input/diligent_districts.csv"
+CSV_INPUT_PATH_NAME  = "Simbli/Crawlers - BB Part 1.csv"
+DILIGENT_CSV_INPUT_PATH_NAME  = "Diligent/Crawlers - Dil 1.csv"
 BOARDDOCS_CSV_INPUT_PATH_NAME = "Simbli/Crawlers - BD Part 1.csv"
-SIMBLI_CSV_INPUT_PATH_NAME   = "Simbli/Crawlers - Simbli CTRL F.csv"
+SIMBLI_CSV_INPUT_PATH_NAME   = "Simbli/Crawlers - Sim Part 1.csv"
 CSV_OUTPUT_PATH_NAME = "Simbli/output.csv"
 CRED_PATH_NAME       = "JsonKeys/google_sam.json"
 

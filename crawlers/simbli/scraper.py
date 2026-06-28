@@ -19,7 +19,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urljoin, urlparse
 
 import fitz  # PyMuPDF
-import ocrmypdf
 import psycopg2
 import requests
 
@@ -89,7 +88,6 @@ _CDP_PDF_CONTENT_TYPES = {"application/pdf", "application/octet-stream", "binary
 _TIER0_URL_SETTLE_SECS = 15
 _NEW_TAB_TIMEOUT_SECS  = 20
 _PRINT_TIMEOUT_SECS    = 45
-SIZE_LIMIT_MB          = 10
 
 # ── Outcome labels ────────────────────────────────────────────────────────────
 OUTCOME_DOWNLOADED = "✅ Downloaded"
@@ -670,14 +668,6 @@ def _merge_pdfs(pdf_paths: list, output_path: str) -> bool:
         return False
 
 
-def _ocr_pdf(input_pdf: str, output_pdf: str) -> str:
-    ocrmypdf.ocr(
-        input_pdf, output_pdf,
-        skip_text=True, jobs=4, optimize=0,
-        progress_bar=False, output_type="pdf",
-    )
-    return output_pdf
-
 
 def _resolve_folder(primary_folder_id: str) -> str:
     return primary_folder_id
@@ -723,17 +713,6 @@ def combine_and_upload_documents(
         if not _merge_pdfs(parts, merged_path):
             meeting_record.errors += 1
             return
-
-        # OCR if within size limit
-        file_size_mb = os.path.getsize(merged_path) / 1024 / 1024
-        if file_size_mb <= SIZE_LIMIT_MB:
-            ocr_output = merged_path.replace(".pdf", "_ocr.pdf")
-            _ocr_pdf(merged_path, ocr_output)
-            os.remove(merged_path)
-            merged_path = ocr_output
-            LOGGER.info("  Document made searchable.")
-        else:
-            LOGGER.info(f"  Large file ({file_size_mb:.1f} MB) — skipping inline OCR.")
 
         # SHA-256 dupe check
         file_hash = compute_sha256_from_file(merged_path)
@@ -1162,11 +1141,6 @@ def _process_single_attachment(
                 final_date_str = ai_date or row_date.strftime("%m%d%y")
                 base_name      = f"{nces}_{district_upper}_{doc_type}_{final_date_str}.pdf"
                 file_name_final = build_unique_filename(base_name)
-
-                # OCR the minutes file
-                ocr_out = filepath.replace(".pdf", "_ocr.pdf")
-                _ocr_pdf(filepath, ocr_out)
-                filepath = ocr_out
 
                 uid = upload_file_to_folder(drive_service, _get_folder_id("MINUTES"), filepath, file_name_final)
                 file_url = f"https://drive.google.com/file/d/{uid}/view?usp=sharing"
