@@ -666,7 +666,7 @@ def log_to_overall_sbd_log(
             (%(nces_id)s, %(created_at)s, %(num_new_meetings)s,
              %(max_meeting_date)s, %(num_docs_downloaded)s, %(notes)s,
              %(crawler_type)s, %(batch_run_id)s)
-        ON CONFLICT (nces_id, DATE(created_at), crawler_type) DO UPDATE SET
+        ON CONFLICT (nces_id, ((created_at AT TIME ZONE 'UTC')::date), crawler_type) DO UPDATE SET
             num_new_meetings    = EXCLUDED.num_new_meetings,
             max_meeting_date    = EXCLUDED.max_meeting_date,
             num_docs_downloaded = EXCLUDED.num_docs_downloaded,
