@@ -67,7 +67,7 @@ from core.document_utils import (
     classify_doc_type,
     debug_check_pdf_file,
 )
-from core.driver import _is_session_alive, create_undetected_driver
+from core.driver import _is_session_alive, create_undetected_driver, wait_for_download
 from core.gcs import download_blob_to_tmp
 from core.google_auth import get_authenticated_services
 from core.google_functions import upload_file_to_folder
@@ -241,12 +241,21 @@ def _is_cover_page_blank(driver, nces_id: str) -> bool:
             By.CSS_SELECTOR, "a.supportingDocText, a[href*='Attachment.aspx']"
         )
         all_links = container.find_elements(By.CSS_SELECTOR, "a")
+        LOGGER.debug(
+            f"  _is_cover_page_blank: text={len(raw_text)} chars, "
+            f"doc_links={len(doc_links)}, all_links={len(all_links)}"
+        )
         if raw_text or doc_links or all_links:
+            LOGGER.info(
+                f"  div.data-scroll found — text={len(raw_text)} chars, "
+                f"doc_links={len(doc_links)}, total_links={len(all_links)}"
+            )
             extract_and_log_contact_info(driver, nces_id)
             return False
+        LOGGER.info("  div.data-scroll found but empty (no text, no links).")
         return True
     except Exception as e:
-        LOGGER.debug(f"  _is_cover_page_blank: {e}")
+        LOGGER.info(f"  div.data-scroll not found within 10s — {type(e).__name__}: {e}")
         return True
 
 
@@ -316,21 +325,30 @@ def _get_cover_page_pdf(
                 LOGGER.error("  Could not trigger final print.")
                 return None
 
-        wait_secs = random.uniform(30, 45)
-        LOGGER.info(f"  Waiting {wait_secs:.1f}s for PDF stream...")
-        time.sleep(wait_secs)
+        # Chrome auto-downloads the PDF to the per-PID download dir
+        # (plugins.always_open_pdf_externally=True in core/driver.py).
+        # driver.current_url stays on the HTML preview page, so cookies-based
+        # download would fetch HTML. Use wait_for_download instead.
+        download_dir = f"/tmp/dl_{os.getpid()}"
+        LOGGER.info(f"  Waiting for PDF to appear in {download_dir} (up to 60s)...")
+        downloaded_path = wait_for_download(download_dir, timeout=60)
 
-        pdf_url   = driver.current_url
-        file_date = row_date.strftime("%m-%d-%y")
-        cover_name = (
-            f"{nces}_{district.upper()}_{term_for_naming}_{file_date}_cover.pdf"
-        )
+        if not downloaded_path:
+            LOGGER.warning("  ⚠️ PDF never appeared in download dir — print may have failed.")
+            return None
+
+        file_date  = row_date.strftime("%m-%d-%y")
+        cover_name = f"{nces}_{district.upper()}_{term_for_naming}_{file_date}_cover.pdf"
         cover_path = os.path.join(tempfile.gettempdir(), cover_name)
 
-        if download_pdf_with_selenium_cookies(driver, pdf_url, cover_path):
-            if debug_check_pdf_file(cover_path):
-                LOGGER.info(f"  ✅ Cover page captured: {cover_path}")
-                return cover_path
+        shutil.move(downloaded_path, cover_path)
+        LOGGER.info(f"  Cover page moved to: {cover_path}")
+
+        if debug_check_pdf_file(cover_path):
+            LOGGER.info(f"  ✅ Cover page captured: {cover_path}")
+            return cover_path
+
+        LOGGER.warning(f"  ⚠️ Moved file is not a valid PDF: {cover_path}")
         return None
 
     except Exception as e:
