@@ -232,37 +232,32 @@ def extract_and_log_contact_info(driver, nces_id: str = "") -> None:
 def _is_cover_page_blank(driver, nces_id: str) -> bool:
     """Check Simbli data-scroll container for content. Extracts contacts as side effect."""
     try:
-        # First: ensure element exists in DOM
         WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "div.data-scroll"))
         )
 
-        # Then: wait up to 10s for Angular to populate the element with content.
-        # presence_of_element_located returns immediately (element is always in DOM),
-        # but Angular loads item detail via AJAX — content may not be ready yet.
-        def _has_content(d):
-            els = d.find_elements(By.CSS_SELECTOR, "div.data-scroll")
-            if not els:
-                return False
-            el = els[0]
-            return bool(el.text.strip() or el.find_elements(By.CSS_SELECTOR, "a"))
-
-        try:
-            WebDriverWait(driver, 10).until(_has_content)
-        except TimeoutException:
-            LOGGER.info("  div.data-scroll found but empty after 10s wait.")
-            return True
-
         container = driver.find_element(By.CSS_SELECTOR, "div.data-scroll")
         raw_text  = container.text.strip()
+
+        if not raw_text:
+            # Angular AJAX may still be in-flight — single extra wait, no polling loop.
+            # (Polling every 500ms for 10s was crashing ChromeDriver via connection exhaustion.)
+            time.sleep(5)
+            container = driver.find_element(By.CSS_SELECTOR, "div.data-scroll")
+            raw_text  = container.text.strip()
+
+        if not raw_text:
+            inner_html = driver.execute_script("return arguments[0].innerHTML;", container)
+            LOGGER.info(
+                f"  div.data-scroll still empty after 5s — "
+                f"innerHTML: {(inner_html or '').strip()[:300]}"
+            )
+
         doc_links = container.find_elements(
             By.CSS_SELECTOR, "a.supportingDocText, a[href*='Attachment.aspx']"
         )
         all_links = container.find_elements(By.CSS_SELECTOR, "a")
-        LOGGER.debug(
-            f"  _is_cover_page_blank: text={len(raw_text)} chars, "
-            f"doc_links={len(doc_links)}, all_links={len(all_links)}"
-        )
+
         if raw_text or doc_links or all_links:
             LOGGER.info(
                 f"  div.data-scroll found — text={len(raw_text)} chars, "
@@ -270,6 +265,7 @@ def _is_cover_page_blank(driver, nces_id: str) -> bool:
             )
             extract_and_log_contact_info(driver, nces_id)
             return False
+
         LOGGER.info("  div.data-scroll found but empty (no text, no links).")
         return True
     except Exception as e:
