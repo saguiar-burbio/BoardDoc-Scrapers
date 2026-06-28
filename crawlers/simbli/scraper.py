@@ -232,10 +232,28 @@ def extract_and_log_contact_info(driver, nces_id: str = "") -> None:
 def _is_cover_page_blank(driver, nces_id: str) -> bool:
     """Check Simbli data-scroll container for content. Extracts contacts as side effect."""
     try:
-        wait = WebDriverWait(driver, 10)
-        container = wait.until(
+        # First: ensure element exists in DOM
+        WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "div.data-scroll"))
         )
+
+        # Then: wait up to 10s for Angular to populate the element with content.
+        # presence_of_element_located returns immediately (element is always in DOM),
+        # but Angular loads item detail via AJAX — content may not be ready yet.
+        def _has_content(d):
+            els = d.find_elements(By.CSS_SELECTOR, "div.data-scroll")
+            if not els:
+                return False
+            el = els[0]
+            return bool(el.text.strip() or el.find_elements(By.CSS_SELECTOR, "a"))
+
+        try:
+            WebDriverWait(driver, 10).until(_has_content)
+        except TimeoutException:
+            LOGGER.info("  div.data-scroll found but empty after 10s wait.")
+            return True
+
+        container = driver.find_element(By.CSS_SELECTOR, "div.data-scroll")
         raw_text  = container.text.strip()
         doc_links = container.find_elements(
             By.CSS_SELECTOR, "a.supportingDocText, a[href*='Attachment.aspx']"
