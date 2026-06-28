@@ -45,7 +45,7 @@ from core.gcs import download_blob_to_tmp
 from core.google_auth import get_authenticated_services
 from core.humanize import random_idle
 from core.models import AttachmentRecord, MeetingRecord
-from core.utils import debug_summarize_run_stats, setup_logger
+from core.utils import debug_summarize_run_stats, setup_logger, parse_check_date
 from crawlers.diligent.scraper import search_and_download_agenda_attachments
 
 LOGGER = setup_logger(log_level="INFO")
@@ -403,7 +403,7 @@ if __name__ == "__main__":
         link              = row["Link"]
         nces              = str(row["NCES ID"])
         district          = str(row["District Name"]).strip()
-        last_meeting_date = str(row["Check Date"]).strip().replace("/", "-")
+        last_meeting_date = parse_check_date(str(row["Check Date"]).strip().replace("/", "-"))
         ctrl_f_term       = str(row.get("Search Term", "minutes")).strip()
 
         if not ctrl_f_term or ctrl_f_term.lower() == "nan":

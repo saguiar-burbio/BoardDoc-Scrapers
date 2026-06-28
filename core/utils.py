@@ -5,6 +5,7 @@
 import os
 import time
 import logging
+from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Reference the named logger established in this configuration
@@ -45,7 +46,22 @@ def setup_logger(log_level: str = "INFO", log_file: str = None) -> logging.Logge
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 2. DIAGNOSTIC & DEBUG UTILITIES
+# 2. DATE UTILITIES
+# ═════════════════════════════════════════════════════════════════════════════
+
+def parse_check_date(date_str: str) -> str:
+    """Normalizes a check_date string to %m-%d-%y, accepting both 2- and 4-digit years."""
+    for fmt in ("%m-%d-%Y", "%m-%d-%y"):
+        try:
+            return datetime.strptime(date_str.strip(), fmt).strftime("%m-%d-%y")
+        except ValueError:
+            continue
+    LOGGER.warning(f"parse_check_date: unrecognized format '{date_str}' — defaulting to 06-01-25")
+    return "06-01-25"
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 3. DIAGNOSTIC & DEBUG UTILITIES
 # ═════════════════════════════════════════════════════════════════════════════
 
 def debug_screenshot(driver, label: str = "screenshot") -> None:

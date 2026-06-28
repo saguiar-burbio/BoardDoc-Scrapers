@@ -33,7 +33,7 @@ from config.settings import (
 )
 from core.gcs import download_blob_to_tmp, upload_file_to_gcs
 from core.models import AttachmentRecord, MeetingRecord
-from core.utils import setup_logger, debug_summarize_run_stats
+from core.utils import setup_logger, debug_summarize_run_stats, parse_check_date
 from core.database import (
     load_all_db_credentials,
     get_all_prompts_df,
@@ -302,7 +302,7 @@ if __name__ == "__main__":
         link              = row["Link"]
         nces              = str(row["NCES ID"])
         district          = str(row["District Name"]).strip()
-        last_meeting_date = str(row["Check Date"]).strip().replace("/", "-")
+        last_meeting_date = parse_check_date(str(row["Check Date"]).strip().replace("/", "-"))
         ctrl_f_term       = str(row.get("Search Term", "minutes")).strip()
 
         if not ctrl_f_term or ctrl_f_term.lower() == "nan":
