@@ -234,7 +234,7 @@ def _is_cover_page_blank(driver, nces_id: str) -> bool:
     try:
         wait = WebDriverWait(driver, 10)
         container = wait.until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, "div.data-scroll"))
+            EC.presence_of_element_located((By.CSS_SELECTOR, "div.data-scroll"))
         )
         raw_text  = container.text.strip()
         doc_links = container.find_elements(
@@ -278,21 +278,23 @@ def _get_cover_page_pdf(
         try:
             print_button = WebDriverWait(driver, 15).until(
                 EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR,
-                     "button[title='Print Options'], button.multiselect:has(img[src*='print_icon'])")
+                    (By.CSS_SELECTOR, "button[aria-controls='printOptions']")
                 )
             )
         except TimeoutException:
-            LOGGER.warning("  Print button [title='Print Options'] not found.")
+            LOGGER.warning("  Print dropdown button [aria-controls='printOptions'] not found.")
             return None
 
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", print_button)
         time.sleep(1)
         safe_click(driver, print_button)
 
-        # Click "Print Item" in dropdown
+        # Click "Print Item" in dropdown (href is javascript:void(0); — match by label text)
         print_item_link = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "a[href*='PrintAgendaItemNew.aspx']"))
+            EC.element_to_be_clickable(
+                (By.XPATH,
+                 "//ul[@id='printOptions']//label[normalize-space()='Print Item']/parent::a")
+            )
         )
         safe_click(driver, print_item_link)
 
