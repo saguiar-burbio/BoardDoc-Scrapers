@@ -310,32 +310,35 @@ def _get_cover_page_pdf(
         time.sleep(2)  # let the Bootstrap/Angular dropdown animate open
 
         # ── Step 2: Click "Print Item" in the dropdown ───────────────────────
-        # Diagnostic: check what's actually in #printOptions before waiting
+        # Log the full dropdown HTML so we can see the actual label text
         dropdown_els = driver.find_elements(By.ID, "printOptions")
         if dropdown_els:
             dd_html = driver.execute_script("return arguments[0].outerHTML;", dropdown_els[0])
-            LOGGER.info(f"  #printOptions HTML: {(dd_html or '').strip()[:400]}")
+            LOGGER.info(f"  #printOptions HTML: {(dd_html or '').strip()[:800]}")
         else:
             LOGGER.warning("  #printOptions element not found in DOM — dropdown may not have opened.")
-
-        try:
-            print_item_link = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable(
-                    (By.XPATH,
-                     "//ul[@id='printOptions']//label[normalize-space()='Print Item']/parent::a")
-                )
-            )
-        except TimeoutException:
-            # Log all anchor text inside any visible dropdown for diagnosis
-            all_dd_links = driver.find_elements(By.CSS_SELECTOR, "#printOptions a, .dropdown-menu a")
-            link_texts = [a.text.strip() for a in all_dd_links]
-            LOGGER.warning(
-                f"  'Print Item' link not clickable after 10s. "
-                f"Links found in dropdown: {link_texts}"
-            )
             return None
 
-        safe_click(driver, print_item_link)
+        # Use JavaScript to click the "Print Item" link — bypasses Selenium displayability
+        # checks that fail on Angular-rendered label text inside bootstrap dropdowns.
+        clicked = driver.execute_script("""
+            var links = document.querySelectorAll('#printOptions a');
+            for (var i = 0; i < links.length; i++) {
+                var text = (links[i].textContent || links[i].innerText || '').trim().toLowerCase();
+                var html = links[i].innerHTML.toLowerCase();
+                if (text.indexOf('item') !== -1 || html.indexOf('item') !== -1) {
+                    links[i].click();
+                    return 'clicked: ' + links[i].innerHTML.trim().substring(0, 100);
+                }
+            }
+            // Fallback: click the last link (usually "Print Item")
+            if (links.length > 0) {
+                links[links.length - 1].click();
+                return 'fallback-last: ' + links[links.length - 1].innerHTML.trim().substring(0, 100);
+            }
+            return 'no-links-found';
+        """)
+        LOGGER.info(f"  Print Item click result: {clicked}")
 
         # Handle new tab
         new_tab = wait_for_new_tab(driver, handles_before, timeout=20)
@@ -1034,15 +1037,11 @@ def _process_single_attachment(
     handles_before            = list(driver.window_handles)
     current_url_before_switch = driver.current_url
 
-    # URL pre-check: skip if already in doc_collection.attachments
-    url_is_dupe, existing_att_id = db_check_attachment_dupe("", href)
-    if url_is_dupe:
-        LOGGER.info(f"  🔁 URL already in attachments (id={existing_att_id}) — skipping.")
-        att_record.dupe_check_type = "attachments_url"
-        att_record.passed_dupe     = False
-        att_record.downloaded      = OUTCOME_DUPE
-        meeting_record.dupes      += 1
-        return None
+    # NOTE: URL pre-check against doc_collection.attachments intentionally removed.
+    # That table is written BEFORE a successful Drive upload, so a row there only means
+    # "downloaded", not "uploaded". Files from failed runs would be permanently skipped.
+    # SHA-256 via db_check_sha256_dupe (which queries doc_collection.crawler_hash,
+    # written only after confirmed upload) is the correct gate for dupe skipping.
 
     temp_name = f"{nces}_{district_upper}_{term_for_naming}_{file_date}_{attachment_index}.pdf"
     filepath  = os.path.join(tempfile.gettempdir(), temp_name)
