@@ -46,7 +46,7 @@ LOGGER = setup_logger(log_level="INFO")
 # Tune to available CPU cores / RAM (2 is safe; 4 viable on 8-core / ≥16 GB).
 WORKER_PROCESSES = 2
 # Set to False to run districts sequentially (useful for debugging).
-PARALLEL_ENABLED = True
+PARALLEL_ENABLED = False
 
 drive_service = None
 
@@ -171,8 +171,11 @@ def run_district(
                 # ── Navigate to meeting ────────────────────────────────────
                 try:
                     title_link = row.find_element(By.CSS_SELECTOR, "td:nth-child(2) a")
-                    mtg_url    = title_link.get_attribute("href") or link
-                    driver.get(mtg_url)
+                    mtg_url    = title_link.get_attribute("href") or ""
+                    if mtg_url.startswith("http"):
+                        driver.get(mtg_url)
+                    else:
+                        title_link.click()
                     WebDriverWait(driver, 30).until(
                         lambda d: d.execute_script("return document.readyState") == "complete"
                     )

@@ -170,7 +170,7 @@ def db_check_sha256_dupe(sha256_hex: str) -> bool:
     except Exception as e:
         LOGGER.error(f"  DB SHA-256 check error (reader, treating as novel): {e}")
 
-    # -- Check 2: doc_collection.crawler_hash (main write system boundary context) -------
+    # -- Check 2: doc_collection.crawler_hash + crawl_attachments (main write creds) ------
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
@@ -180,6 +180,13 @@ def db_check_sha256_dupe(sha256_hex: str) -> bool:
                 )
                 if cur.fetchone() is not None:
                     LOGGER.info("  SHA-256 dupe check → DUPE (found in doc_collection.crawler_hash)")
+                    return True
+                cur.execute(
+                    "SELECT 1 FROM doc_collection.crawl_attachments WHERE sha256_hash = %s LIMIT 1;",
+                    (sha256_hex,)
+                )
+                if cur.fetchone() is not None:
+                    LOGGER.info("  SHA-256 dupe check → DUPE (found in doc_collection.crawl_attachments)")
                     return True
     except Exception as e:
         LOGGER.error(f"  DB SHA-256 check error (crawler_hash, treating as novel): {e}")

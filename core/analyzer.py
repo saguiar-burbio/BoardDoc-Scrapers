@@ -39,7 +39,10 @@ def analyze_pdf_with_gemini(
         pdf_part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
         response = client.models.generate_content(model=model_name, contents=[prompt, pdf_part])
     except Exception as e:
+        err_str = str(e)
         LOGGER.error(f"  ❌ Gemini API Call Failed: {e}")
+        if "400" in err_str or "INVALID_ARGUMENT" in err_str:
+            return {"result": {"error": "INVALID_ARGUMENT"}, "tokens": {}}
         return {"result": {"error": "API_CALL_FAILED"}, "tokens": {}}
 
     usage = getattr(response, "usage_metadata", None)
@@ -78,10 +81,14 @@ def analyze_pdf_with_gemini_with_retry(
  
         LOGGER.info(f"  🔁 Gemini call attempt {attempt}/{max_retries + 1}: {pdf_path}")
         last_response = analyze_pdf_with_gemini(pdf_path, prompt, model_name)
- 
-        if last_response.get("result", {}).get("error") != "API_CALL_FAILED":
+
+        error = last_response.get("result", {}).get("error")
+        if error == "INVALID_ARGUMENT":
+            LOGGER.error(f"  ❌ Gemini 400 INVALID_ARGUMENT — not retrying: {pdf_path}")
             return last_response
- 
+        if error != "API_CALL_FAILED":
+            return last_response
+
     LOGGER.error(f"  ❌ Gemini failed after {max_retries + 1} attempts for: {pdf_path}")
     return last_response
 
