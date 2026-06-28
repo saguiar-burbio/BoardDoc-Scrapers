@@ -27,7 +27,7 @@ BUCKET_NAME = "plasma-matter-398213"
 
 # GCS Object Storage Path Ingress/Egress Pointers
 CSV_INPUT_PATH_NAME  = "Simbli/Crawlers - BB Part 1.csv"
-DILIGENT_CSV_INPUT_PATH_NAME  = "Diligent/Crawlers - Dil 1.csv"
+DILIGENT_CSV_INPUT_PATH_NAME  = "Simbli/Crawlers - Dil 1.csv"
 BOARDDOCS_CSV_INPUT_PATH_NAME = "Simbli/Crawlers - BD Part 1.csv"
 SIMBLI_CSV_INPUT_PATH_NAME   = "Simbli/Crawlers - Sim Part 1.csv"
 CSV_OUTPUT_PATH_NAME = "Simbli/output.csv"
