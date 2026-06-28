@@ -277,12 +277,14 @@ def _get_cover_page_pdf(
         # Click Print Options button
         try:
             print_button = WebDriverWait(driver, 15).until(
-                EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, "button[aria-controls='printOptions']")
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR,
+                     "button[aria-label='Print Options'], button[aria-controls='printOptions'], "
+                     "div.btn-group.ML5 button.dropdown-toggle")
                 )
             )
         except TimeoutException:
-            LOGGER.warning("  Print dropdown button [aria-controls='printOptions'] not found.")
+            LOGGER.warning("  Print dropdown button not found after 15s.")
             return None
 
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", print_button)
@@ -777,7 +779,7 @@ def combine_and_upload_documents(
                     meeting_id=meeting_record.meeting_id, document_id=merged_attachment_id,
                 )
                 log_document_response_to_db(
-                    document_id=merged_attachment_id, usage_id=usage_id,
+                    document_id=merged_attachment_id, ai_call_id=usage_id,
                     completion_text=str(ar.get("result", {})), extracted_data=ar.get("result", {}),
                 )
                 result_data = ar.get("result", {})
@@ -802,7 +804,7 @@ def combine_and_upload_documents(
                     meeting_id=meeting_record.meeting_id, document_id=merged_attachment_id,
                 )
                 log_document_response_to_db(
-                    document_id=merged_attachment_id, usage_id=usage_id,
+                    document_id=merged_attachment_id, ai_call_id=usage_id,
                     completion_text=str(ar.get("result", {})), extracted_data=ar.get("result", {}),
                 )
                 result_data = ar.get("result", {})
@@ -828,7 +830,7 @@ def combine_and_upload_documents(
                     meeting_id=meeting_record.meeting_id, document_id=merged_attachment_id,
                 )
                 log_document_response_to_db(
-                    document_id=merged_attachment_id, usage_id=usage_id,
+                    document_id=merged_attachment_id, ai_call_id=usage_id,
                     completion_text=str(ar.get("result", {})), extracted_data=ar.get("result", {}),
                 )
                 result_data = ar.get("result", {})
@@ -858,7 +860,7 @@ def combine_and_upload_documents(
                     meeting_id=meeting_record.meeting_id, document_id=merged_attachment_id,
                 )
                 log_document_response_to_db(
-                    document_id=merged_attachment_id, usage_id=usage_id,
+                    document_id=merged_attachment_id, ai_call_id=usage_id,
                     completion_text=str(ar.get("result", {})), extracted_data=ar.get("result", {}),
                 )
                 result_data = ar.get("result", {})
@@ -883,7 +885,7 @@ def combine_and_upload_documents(
                 meeting_id=meeting_record.meeting_id, document_id=merged_attachment_id,
             )
             log_document_response_to_db(
-                document_id=merged_attachment_id, usage_id=usage_id,
+                document_id=merged_attachment_id, ai_call_id=usage_id,
                 completion_text=str(ar.get("result", {})), extracted_data=ar.get("result", {}),
             )
             result_data = ar.get("result", {})
@@ -907,7 +909,7 @@ def combine_and_upload_documents(
                     meeting_id=meeting_record.meeting_id, document_id=merged_attachment_id,
                 )
                 log_document_response_to_db(
-                    document_id=merged_attachment_id, usage_id=usage_id,
+                    document_id=merged_attachment_id, ai_call_id=usage_id,
                     completion_text=str(ar.get("result", {})), extracted_data=ar.get("result", {}),
                 )
                 result_data  = ar.get("result", {})
@@ -1323,7 +1325,7 @@ def search_and_download_agenda_attachments(
                 )
                 if cover_id:
                     log_document_response_to_db(
-                        document_id=cover_id, usage_id=usage_id,
+                        document_id=cover_id, ai_call_id=usage_id,
                         completion_text=str(router_result),
                         extracted_data=router_result if isinstance(router_result, dict) else {},
                     )
