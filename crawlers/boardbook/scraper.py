@@ -9,7 +9,6 @@
 import logging
 import os
 import re
-import tempfile
 import time
 from typing import List, Optional, Set
 from urllib.parse import urlparse, parse_qs
@@ -126,7 +125,7 @@ def _process_single_attachment(
     LOGGER.info(f"\n{'='*80}\n [{district}] | [ATT #{attachment_index}] START\nhref: {href}\nname: {att_name}")
 
     wait = WebDriverWait(driver, 20)
-    download_dir = tempfile.gettempdir()
+    download_dir = f"/tmp/dl_{os.getpid()}"
     meeting_page_url = driver.current_url
 
     if not href or "formstack" in href.lower():

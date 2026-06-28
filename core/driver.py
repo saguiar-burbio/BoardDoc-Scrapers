@@ -47,9 +47,12 @@ def create_undetected_driver() -> uc.Chrome:
         'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     )
 
+    download_dir = f"/tmp/dl_{pid}"
+    os.makedirs(download_dir, exist_ok=True)
+
     prefs = {
         "profile.managed_default_content_settings.images": 2,
-        "download.default_directory": "/tmp",
+        "download.default_directory": download_dir,
         "download.prompt_for_download": False,
         "download.directory_upgrade": True,
         "plugins.always_open_pdf_externally": True,

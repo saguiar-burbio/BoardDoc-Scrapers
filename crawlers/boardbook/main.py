@@ -207,6 +207,7 @@ def main_district_pipeline(
         except Exception:
             pass
         shutil.rmtree(chrome_profile_dir, ignore_errors=True)
+        shutil.rmtree(f"/tmp/dl_{os.getpid()}", ignore_errors=True)
         LOGGER.debug(f"[{district}] Chrome process and profile dir cleaned up.")
 
     return meeting_records
