@@ -768,9 +768,9 @@ def log_attachment_to_db(
     minhash_obj: Optional[Any] = None,
 ) -> Optional[int]:
     """INSERT one row into doc_collection.attachments."""
-    # Pass as a Python list — psycopg2 converts list→PostgreSQL BIGINT[] array literal automatically.
-    # json.dumps() produces "[1234, ...]" (JSON) which PostgreSQL rejects as malformed array literal.
-    minhash_json = minhash_obj.hashvalues.tolist() if minhash_obj is not None else None
+    # attachments.minhash is jsonb — must use psycopg2.extras.Json(), not a raw list.
+    # (crawler_hash.min_hash is BIGINT[] and takes a raw list; these are different columns.)
+    minhash_json = psycopg2.extras.Json(minhash_obj.hashvalues.tolist()) if minhash_obj is not None else None
 
     sql = """
         INSERT INTO doc_collection.attachments
@@ -856,6 +856,9 @@ def log_document_response_to_db(
     extracted_data: dict,
 ) -> Optional[int]:
     """INSERT one row into doc_collection.document_responses."""
+    if document_id is None:
+        LOGGER.warning("  log_document_response_to_db: document_id is None — skipping.")
+        return None
     sql = """
         INSERT INTO doc_collection.document_responses
             (document_id, ai_call_id, completion_text, extracted_data, created_at)
