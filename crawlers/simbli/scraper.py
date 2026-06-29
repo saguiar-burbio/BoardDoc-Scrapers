@@ -16,7 +16,7 @@ import time
 import traceback
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import fitz  # PyMuPDF
 import psycopg2
@@ -382,17 +382,27 @@ def _get_cover_page_pdf(
 
         pdf_url = driver.current_url
         LOGGER.info(f"  Cover page PDF URL resolved to: {pdf_url}")
-        
-        # ── Step 5: Download ──────────────────────────────────────────────
+
+        # ── Step 5: Unwrap viewer URL if needed ───────────────────────────
+        # Simbli's print preview lands on a CommonPrint/ViewFile viewer page,
+        # not the raw PDF. The actual PDF URL is in the ?pdfurl= query param.
+        actual_pdf_url = pdf_url
+        if "ViewFile" in pdf_url:
+            qs = parse_qs(urlparse(pdf_url).query)
+            if "pdfurl" in qs:
+                actual_pdf_url = unquote(qs["pdfurl"][0])
+                LOGGER.info(f"  Unwrapped viewer → actual PDF URL: {actual_pdf_url}")
+
+        # ── Step 6: Download ──────────────────────────────────────────────
         file_date  = row_date.strftime("%m-%d-%y")
         cover_name = f"{nces}_{district.upper()}_{term_for_naming}_{file_date}_cover.pdf"
         cover_path = os.path.join(tempfile.gettempdir(), cover_name)
 
-        if download_pdf_with_selenium_cookies(driver, pdf_url, cover_path):
+        if download_pdf_with_selenium_cookies(driver, actual_pdf_url, cover_path):
             if debug_check_pdf_file(cover_path):
                 LOGGER.info(f"  ✅ Cover page captured: {cover_path}")
                 return cover_path
-            
+
         return None
 
     except Exception as e:
