@@ -319,26 +319,28 @@ def _get_cover_page_pdf(
             LOGGER.warning("  #printOptions element not found in DOM — dropdown may not have opened.")
             return None
 
-        # Use JavaScript to click the "Print Item" link — bypasses Selenium displayability
-        # checks that fail on Angular-rendered label text inside bootstrap dropdowns.
-        clicked = driver.execute_script("""
-            var links = document.querySelectorAll('#printOptions a');
-            for (var i = 0; i < links.length; i++) {
-                var text = (links[i].textContent || links[i].innerText || '').trim().toLowerCase();
-                var html = links[i].innerHTML.toLowerCase();
-                if (text.indexOf('item') !== -1 || html.indexOf('item') !== -1) {
-                    links[i].click();
-                    return 'clicked: ' + links[i].innerHTML.trim().substring(0, 100);
-                }
-            }
-            // Fallback: click the last link (usually "Print Item")
-            if (links.length > 0) {
-                links[links.length - 1].click();
-                return 'fallback-last: ' + links[links.length - 1].innerHTML.trim().substring(0, 100);
-            }
-            return 'no-links-found';
-        """)
-        LOGGER.info(f"  Print Item click result: {clicked}")
+        # Find "Print Item" link and click via Selenium's WebDriver command.
+        # JS execute_script clicks are NOT user gestures → Chrome popup blocker
+        # silently swallows window.open(), so the new tab never appears.
+        # WebDriver .click() IS a user gesture and bypasses the popup blocker.
+        try:
+            print_item_link = driver.find_element(
+                By.XPATH,
+                "//ul[@id='printOptions']//label[contains(., 'Print Item')]/parent::a"
+            )
+            LOGGER.info("  Found 'Print Item' link — clicking via WebDriver (user gesture).")
+            print_item_link.click()
+        except NoSuchElementException:
+            # Fallback: click last <a> in the dropdown (usually "Print Item")
+            all_opts = driver.find_elements(By.CSS_SELECTOR, "#printOptions a")
+            if not all_opts:
+                LOGGER.warning("  No links found in #printOptions — cannot click Print Item.")
+                return None
+            LOGGER.info(f"  'Print Item' XPath not found; clicking last option as fallback.")
+            all_opts[-1].click()
+        except Exception as e:
+            LOGGER.warning(f"  Could not click Print Item via WebDriver: {e}")
+            return None
 
         # Handle new tab
         new_tab = wait_for_new_tab(driver, handles_before, timeout=20)
@@ -685,17 +687,10 @@ def _tier3_5_click_download_button(driver, filepath: str) -> bool:
 
 
 def _tier4_kiosk_print(driver, filepath: str) -> bool:
-    LOGGER.info("[TIER 4] Kiosk print (window.print())...")
-    try:
-        _purge_download_dir()
-        driver.execute_script("window.print();")
-        printed = _wait_for_new_pdf(timeout=_PRINT_TIMEOUT_SECS)
-        if printed:
-            shutil.move(printed, filepath)
-            if debug_check_pdf_file(filepath):
-                return True
-    except Exception as e:
-        LOGGER.warning(f"  [TIER 4] Error: {e}")
+    # window.print() hangs headless Chrome indefinitely on Simbli pages,
+    # causing a script timeout that leaves ChromeDriver in an unrecoverable state.
+    # Tier4 is permanently disabled.
+    LOGGER.info("[TIER 4] Kiosk print disabled (hangs headless Chrome).")
     return False
 
 
@@ -1317,6 +1312,7 @@ def search_and_download_agenda_attachments(
 
     for span_index, span in enumerate(buttons):
         cover_path = None
+        raw_text   = f"[span {span_index}]"   # safe default if span.text itself fails
         try:
             raw_text = span.text.strip()
             if not raw_text:
@@ -1464,6 +1460,18 @@ def search_and_download_agenda_attachments(
             LOGGER.warning(f"  Span[{span_index}] went stale.")
             continue
         except Exception as e:
+            # A ChromeDriver connection error means the browser process is dead.
+            # Re-raise immediately — looping would burn 6+ hours retrying dead calls.
+            err_str = str(e)
+            if any(sig in err_str for sig in (
+                "HTTPConnectionPool", "Max retries exceeded",
+                "Read timed out", "Failed to establish a new connection",
+            )):
+                LOGGER.critical(
+                    f"  💀 ChromeDriver unreachable — aborting district run "
+                    f"(item '{raw_text}'): {type(e).__name__}"
+                )
+                raise
             LOGGER.error(f"  ❌ Failed processing item '{raw_text}': {e}")
             log_error_to_db(
                 error_type="AGENDA_ITEM_ERROR",

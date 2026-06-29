@@ -596,7 +596,9 @@ def log_to_crawler_hash(
     file_name: Optional[str],
 ) -> None:
     """Inserts precise caching signatures into the main validation schema lookup table."""
-    minhash_json = json.dumps(minhash_obj.hashvalues.tolist()) if minhash_obj is not None else None
+    # Pass as a Python list — psycopg2 converts list→PostgreSQL BIGINT[] array literal automatically.
+    # json.dumps() produces "[1234, ...]" (JSON) which PostgreSQL rejects as malformed array literal.
+    minhash_json = minhash_obj.hashvalues.tolist() if minhash_obj is not None else None
     crawler_date = datetime.utcnow().date()
 
     sql = """
@@ -766,7 +768,9 @@ def log_attachment_to_db(
     minhash_obj: Optional[Any] = None,
 ) -> Optional[int]:
     """INSERT one row into doc_collection.attachments."""
-    minhash_json = json.dumps(minhash_obj.hashvalues.tolist()) if minhash_obj is not None else None
+    # Pass as a Python list — psycopg2 converts list→PostgreSQL BIGINT[] array literal automatically.
+    # json.dumps() produces "[1234, ...]" (JSON) which PostgreSQL rejects as malformed array literal.
+    minhash_json = minhash_obj.hashvalues.tolist() if minhash_obj is not None else None
 
     sql = """
         INSERT INTO doc_collection.attachments
