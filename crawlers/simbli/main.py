@@ -277,9 +277,9 @@ def run_district(
 # SECTION 2 — PARALLEL WORKER ENTRY POINT
 # =============================================================================
 
-def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
+def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str], Optional[int]]:
     """Top-level function executed inside each child process."""
-    idx, nces, district, link, last_meeting_date, ctrl_f_term, district_config_id = task
+    idx, nces, district, link, last_meeting_date, ctrl_f_term = task
     prompt_df = _SHARED_PROMPT_DF
 
     worker_logger = setup_logger(log_level="INFO")
@@ -293,6 +293,11 @@ def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
             worker_logger.info(f"[Worker PID {os.getpid()}] Staggered startup: {startup_delay:.1f}s")
             time.sleep(startup_delay)
 
+        district_config_id = upsert_district_config(
+            nces_id=nces, district_name=district, platform="SIMBLI",
+            crawler_type="legacy_ctrl_f", link=link, check_date=last_meeting_date,
+        )
+
         records = run_district(
             nces               = nces,
             district           = district,
@@ -302,11 +307,11 @@ def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
             check_date         = last_meeting_date,
             district_config_id = district_config_id,
         )
-        return (nces, district, records, None)
+        return (nces, district, records, None, district_config_id)
 
     except Exception as e:
         worker_logger.error(f"[Worker PID {os.getpid()}] Fatal error for '{district}': {e}")
-        return (nces, district, [], str(e))
+        return (nces, district, [], str(e), None)
 
 
 # =============================================================================
@@ -357,7 +362,6 @@ if __name__ == "__main__":
     }
 
     tasks: List[Tuple] = []
-    nces_to_config_id: dict = {}
     for idx, row in df.iterrows():
         link        = row["Link"]
         nces        = str(row["NCES ID"])
@@ -371,12 +375,7 @@ if __name__ == "__main__":
             LOGGER.debug(f"Row {idx}: empty district — skipping.")
             continue
 
-        district_config_id = upsert_district_config(
-            nces_id=nces, district_name=district, platform="SIMBLI",
-            crawler_type="legacy_ctrl_f", link=link, check_date=check_date,
-        )
-        nces_to_config_id[nces] = district_config_id
-        tasks.append((idx, nces, district, link, check_date, ctrl_f_term, district_config_id))
+        tasks.append((idx, nces, district, link, check_date, ctrl_f_term))
 
     run_stats["total_districts"] = len(tasks)
     LOGGER.info(
@@ -384,7 +383,7 @@ if __name__ == "__main__":
         f"{'parallel x' + str(WORKER_PROCESSES) if PARALLEL_ENABLED else 'sequential'}."
     )
 
-    def _handle_result(nces, district, district_records, error_msg):
+    def _handle_result(nces, district, district_records, error_msg, config_id):
         if error_msg:
             LOGGER.error(f"❌ Fatal failure for '{district}': {error_msg}")
             error_docs.append((district, error_msg))
@@ -401,7 +400,6 @@ if __name__ == "__main__":
                 run_stats["total_dupes"]       += rec.dupes
                 run_stats["total_errors"]      += rec.errors
             log_to_overall_sbd_log(nces_id=nces, meeting_records=district_records, notes="", crawler_type="SIMBLI", batch_run_id=batch_run_id)
-            config_id = nces_to_config_id.get(nces)
             if config_id:
                 update_district_last_crawl(config_id)
 
@@ -412,7 +410,7 @@ if __name__ == "__main__":
                 district_name = future_to_district[future]
                 run_stats["districts_attempted"] += 1
                 try:
-                    nces, district, district_records, error_msg = future.result()
+                    nces, district, district_records, error_msg, config_id = future.result()
                 except Exception as e:
                     LOGGER.error(f"❌ Future failed for '{district_name}': {e}")
                     LOGGER.debug(traceback.format_exc())
@@ -420,13 +418,13 @@ if __name__ == "__main__":
                     run_stats["districts_errored"] += 1
                     run_stats["error_districts"].append(district_name)
                     continue
-                _handle_result(nces, district, district_records, error_msg)
+                _handle_result(nces, district, district_records, error_msg, config_id)
     else:
         for task in tasks:
             run_stats["districts_attempted"] += 1
             simbli_scraper.cleanup_tmp_pdfs(max_age_hours=2)
-            nces, district, district_records, error_msg = _worker(task)
-            _handle_result(nces, district, district_records, error_msg)
+            nces, district, district_records, error_msg, config_id = _worker(task)
+            _handle_result(nces, district, district_records, error_msg, config_id)
             time.sleep(random.uniform(10, 40))
 
     close_batch_run(
