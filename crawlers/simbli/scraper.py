@@ -28,6 +28,7 @@ from selenium.common.exceptions import (
     TimeoutException,
     WebDriverException,
 )
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -319,27 +320,39 @@ def _get_cover_page_pdf(
             LOGGER.warning("  #printOptions element not found in DOM — dropdown may not have opened.")
             return None
 
-        # Find "Print Item" link and click via Selenium's WebDriver command.
-        # JS execute_script clicks are NOT user gestures → Chrome popup blocker
-        # silently swallows window.open(), so the new tab never appears.
-        # WebDriver .click() IS a user gesture and bypasses the popup blocker.
+        # Use ActionChains to click "Print Item".
+        # element.click() pre-checks is_displayed() — Angular Bootstrap dropdown <a>
+        # elements fail that check even when visually open, raising ElementNotInteractable.
+        # ActionChains.move_to_element().click() synthesizes a real mouse event
+        # without the interactability pre-check, AND counts as a user gesture so
+        # Chrome's popup blocker allows window.open().
         try:
             print_item_link = driver.find_element(
                 By.XPATH,
                 "//ul[@id='printOptions']//label[contains(., 'Print Item')]/parent::a"
             )
-            LOGGER.info("  Found 'Print Item' link — clicking via WebDriver (user gesture).")
-            print_item_link.click()
         except NoSuchElementException:
-            # Fallback: click last <a> in the dropdown (usually "Print Item")
             all_opts = driver.find_elements(By.CSS_SELECTOR, "#printOptions a")
             if not all_opts:
                 LOGGER.warning("  No links found in #printOptions — cannot click Print Item.")
                 return None
-            LOGGER.info(f"  'Print Item' XPath not found; clicking last option as fallback.")
-            all_opts[-1].click()
+            print_item_link = all_opts[-1]
+            LOGGER.info("  'Print Item' XPath not found; using last dropdown option as fallback.")
+
+        try:
+            LOGGER.info("  Clicking 'Print Item' via ActionChains (bypasses interactability check).")
+            ActionChains(driver).move_to_element(print_item_link).click().perform()
         except Exception as e:
-            LOGGER.warning(f"  Could not click Print Item via WebDriver: {e}")
+            link_html = ""
+            try:
+                link_html = driver.execute_script("return arguments[0].outerHTML;", print_item_link) or ""
+            except Exception:
+                pass
+            LOGGER.warning(
+                f"  Could not click Print Item — {type(e).__name__}\n"
+                f"  Element HTML: {link_html.strip()[:400]}\n"
+                f"  Error: {e}"
+            )
             return None
 
         # Handle new tab

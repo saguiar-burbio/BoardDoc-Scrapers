@@ -28,7 +28,7 @@ def setup_logger(log_level: str = "INFO", log_file: str = None) -> logging.Logge
         A pre-configured logging.Logger instance.
     """
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
-    fmt = "%(asctime)s [%(levelname)-8s] %(funcName)s:%(lineno)d — %(message)s"
+    fmt = "%(asctime)s [%(levelname)s] %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
     
     handlers: list[logging.Handler] = [logging.StreamHandler()]
