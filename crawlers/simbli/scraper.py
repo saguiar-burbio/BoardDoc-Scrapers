@@ -282,80 +282,61 @@ def _get_cover_page_pdf(
     term_for_naming: str,
     row_date: datetime,
 ) -> Optional[str]:
-    """Capture the Simbli cover page via the print dialog."""
+    """
+    Captured the cover page by clicking the print icon.
+    Includes extra waits to ensure the toolbar is loaded.
+    """
     if _is_cover_page_blank(driver, nces):
-        LOGGER.info("  Cover page content is blank — skipping.")
+        LOGGER.info("  Cover page content is blank — skipping cover page.")
         return None
 
     handles_before = list(driver.window_handles)
+
     try:
-        # ── Step 1: Find the Print Options button ────────────────────────────
+        # ── Step 1: Wait for the detail pane to exist ─────────────────────
+        # This ensures the 'print' icon has a parent container to live in
+        # WebDriverWait(driver, 15).until(
+        #     EC.presence_of_element_located((By.CSS_SELECTOR, "div.data-scroll, #PrintExport"))
+        # )
+
+        # ── Step 2: Find the Print Icon ───────────────────────────────────
+        # Try both the specific black icon and any image with 'print' in the src
         try:
+            # We target the button via its title or the image it contains
             print_button = WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located(
-                    (By.CSS_SELECTOR,
-                     "button[aria-label='Print Options'], button[aria-controls='printOptions'], "
-                     "div.btn-group.ML5 button.dropdown-toggle")
+                EC.element_to_be_clickable(
+                    (By.CSS_SELECTOR, "button[title='Print Options'], button.multiselect:has(img[src*='print_icon'])")
                 )
             )
+            LOGGER.debug("  Found print options button.")
         except TimeoutException:
-            LOGGER.warning("  Print dropdown button not found after 15s.")
+            # Diagnostic: let's see if the button exists but isn't clickable
+            btns = driver.find_elements(By.CSS_SELECTOR, "button[title='Print Options']")
+            if btns:
+                LOGGER.warning("  Print button exists but is not clickable (hidden or disabled).")
+            else:
+                LOGGER.warning("  Print button [title='Print Options'] not found in DOM.")
             return None
 
-        btn_html = driver.execute_script("return arguments[0].outerHTML;", print_button)
-        LOGGER.info(f"  Found print button: {(btn_html or '').strip()[:200]}")
-
+        # Ensure it's in view
         driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", print_button)
         time.sleep(1)
+        
+        # Click the button
         safe_click(driver, print_button)
-        time.sleep(2)  # let the Bootstrap/Angular dropdown animate open
-
-        # ── Step 2: Click "Print Item" in the dropdown ───────────────────────
-        # Log the full dropdown HTML so we can see the actual label text
-        dropdown_els = driver.find_elements(By.ID, "printOptions")
-        if dropdown_els:
-            dd_html = driver.execute_script("return arguments[0].outerHTML;", dropdown_els[0])
-            LOGGER.info(f"  #printOptions HTML: {(dd_html or '').strip()[:800]}")
-        else:
-            LOGGER.warning("  #printOptions element not found in DOM — dropdown may not have opened.")
-            return None
-
-        # Use ActionChains to click "Print Item".
-        # element.click() pre-checks is_displayed() — Angular Bootstrap dropdown <a>
-        # elements fail that check even when visually open, raising ElementNotInteractable.
-        # ActionChains.move_to_element().click() synthesizes a real mouse event
-        # without the interactability pre-check, AND counts as a user gesture so
-        # Chrome's popup blocker allows window.open().
-        try:
-            print_item_link = driver.find_element(
-                By.XPATH,
-                "//ul[@id='printOptions']//label[contains(., 'Print Item')]/parent::a"
+        LOGGER.debug("  Print Options dropdown opened.")
+        
+        # ── Step 3: Click "Print Item" in the dropdown ────────────────────
+        # Sometimes this menu takes a moment to animate in
+        print_item_link = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "a[href*='PrintAgendaItemNew.aspx']")
             )
-        except NoSuchElementException:
-            all_opts = driver.find_elements(By.CSS_SELECTOR, "#printOptions a")
-            if not all_opts:
-                LOGGER.warning("  No links found in #printOptions — cannot click Print Item.")
-                return None
-            print_item_link = all_opts[-1]
-            LOGGER.info("  'Print Item' XPath not found; using last dropdown option as fallback.")
+        )
+        safe_click(driver, print_item_link)
+        LOGGER.debug("  'Print Item' link clicked.")
 
-        try:
-            LOGGER.info("  Clicking 'Print Item' via ActionChains (bypasses interactability check).")
-            ActionChains(driver).move_to_element(print_item_link).click().perform()
-        except Exception as e:
-            link_html = ""
-            try:
-                link_html = driver.execute_script("return arguments[0].outerHTML;", print_item_link) or ""
-            except Exception:
-                pass
-            LOGGER.warning(
-                f"  Could not click Print Item — {type(e).__name__}\n"
-                f"  Element HTML: {link_html.strip()[:400]}\n"
-                f"  Error: {e}"
-            )
-            return None
-
-        # Handle new tab
+        # ── Step 4: Handle the New Tab ────────────────────────────────────
         new_tab = wait_for_new_tab(driver, handles_before, timeout=20)
         if not new_tab:
             LOGGER.warning("  No new tab appeared after clicking Print Item.")
@@ -363,51 +344,55 @@ def _get_cover_page_pdf(
 
         driver.switch_to.window(new_tab)
         time.sleep(10)
+        LOGGER.debug(f"  Switched to print preview tab: {driver.current_url}")
 
-        # Click final Print button inside preview tab
+        # ── Step 4.5: Click the FINAL "Print" button inside the preview tab ──
         try:
+            # This selector targets the button that specifically contains the text "Print" 
+            # and the print icon image.
             final_print_button = WebDriverWait(driver, 20).until(
                 EC.element_to_be_clickable(
-                    (By.XPATH,
-                     "//button[contains(., 'Print') and .//img[contains(@src, 'print_icon_black')]]")
+                    (By.XPATH, "//button[contains(., 'Print') and .//img[contains(@src, 'print_icon_black')]]")
                 )
             )
+            
+            LOGGER.info("  Final Print button found. Triggering PDF generation...")
+            
+            # Use safe_click or a direct JS click to bypass any transparent overlays
             driver.execute_script("arguments[0].click();", final_print_button)
-            time.sleep(8)
+            
+            # Critical: Simbli usually refreshes the same tab into a PDF stream.
+            # We wait a few seconds for the POST request to complete.
+            time.sleep(8) 
+            
         except TimeoutException:
-            LOGGER.warning("  Final Print button not found — trying fallback.")
+            LOGGER.warning("  Final 'Print' button not found via XPATH. Trying fallback CSS...")
             try:
                 fallback_btn = driver.find_element(By.CSS_SELECTOR, "button.btn-default.font14")
                 safe_click(driver, fallback_btn)
                 time.sleep(5)
             except Exception:
-                LOGGER.error("  Could not trigger final print.")
+                LOGGER.error("  Could not find any button to trigger final print.")
                 return None
+        
+        # Wait for the browser to resolve the PDF stream
+        wait_secs = random.uniform(30, 45)
+        LOGGER.info(f"  Waiting {wait_secs:.1f}s for PDF stream to resolve...")
+        time.sleep(wait_secs)
 
-        # Chrome auto-downloads the PDF to the per-PID download dir
-        # (plugins.always_open_pdf_externally=True in core/driver.py).
-        # driver.current_url stays on the HTML preview page, so cookies-based
-        # download would fetch HTML. Use wait_for_download instead.
-        download_dir = f"/tmp/dl_{os.getpid()}"
-        LOGGER.info(f"  Waiting for PDF to appear in {download_dir} (up to 60s)...")
-        downloaded_path = wait_for_download(download_dir, timeout=60)
-
-        if not downloaded_path:
-            LOGGER.warning("  ⚠️ PDF never appeared in download dir — print may have failed.")
-            return None
-
+        pdf_url = driver.current_url
+        LOGGER.info(f"  Cover page PDF URL resolved to: {pdf_url}")
+        
+        # ── Step 5: Download ──────────────────────────────────────────────
         file_date  = row_date.strftime("%m-%d-%y")
         cover_name = f"{nces}_{district.upper()}_{term_for_naming}_{file_date}_cover.pdf"
         cover_path = os.path.join(tempfile.gettempdir(), cover_name)
 
-        shutil.move(downloaded_path, cover_path)
-        LOGGER.info(f"  Cover page moved to: {cover_path}")
-
-        if debug_check_pdf_file(cover_path):
-            LOGGER.info(f"  ✅ Cover page captured: {cover_path}")
-            return cover_path
-
-        LOGGER.warning(f"  ⚠️ Moved file is not a valid PDF: {cover_path}")
+        if download_pdf_with_selenium_cookies(driver, pdf_url, cover_path):
+            if debug_check_pdf_file(cover_path):
+                LOGGER.info(f"  ✅ Cover page captured: {cover_path}")
+                return cover_path
+            
         return None
 
     except Exception as e:
@@ -415,6 +400,7 @@ def _get_cover_page_pdf(
         return None
 
     finally:
+        # Safety: Close ANY tab that isn't the main list/agenda window
         try:
             for handle in driver.window_handles:
                 if handle != main_window:
@@ -423,7 +409,11 @@ def _get_cover_page_pdf(
             driver.switch_to.window(main_window)
         except Exception:
             pass
-
+        # get rid of any lingering PDF bytes
+        try:
+            driver.execute_script("window.gc && window.gc();")  # No-op if gc() not exposed
+        except Exception:
+            pass
 
 # ═════════════════════════════════════════════════════════════════════════════
 # PDF DOWNLOAD — SESSION COOKIE METHOD (used for cover pages)
