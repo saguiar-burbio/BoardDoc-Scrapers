@@ -56,7 +56,7 @@ from core.document_utils import (
     debug_check_pdf_file,
     is_pdf_corrupted,
 )
-from core.driver import _is_session_alive
+from core.driver import _is_session_alive, cdp_print_with_timeout
 from core.google_functions import upload_file_to_folder
 from core.hashing import build_minhash, compute_sha256_from_file, serialize_minhash
 from core.pdf_functions import (
@@ -109,8 +109,8 @@ def download_pdf(driver, pdf_url: str, filename: str) -> Optional[str]:
             WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.TAG_NAME, "body"))
             )
-            pdf_result = driver.execute_cdp_cmd(
-                "Page.printToPDF", {"printBackground": True}
+            pdf_result = cdp_print_with_timeout(
+                driver, {"printBackground": True}, timeout=60
             )
             with open(file_path, "wb") as f:
                 f.write(base64.b64decode(pdf_result["data"]))

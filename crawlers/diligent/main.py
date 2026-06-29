@@ -8,6 +8,8 @@ import logging
 import os
 import random
 import re
+import shutil
+import signal
 import tempfile
 import time
 import traceback
@@ -54,6 +56,8 @@ LOGGER = setup_logger(log_level="INFO")
 WORKER_PROCESSES = 2
 # Set to False to run districts sequentially (useful for debugging).
 PARALLEL_ENABLED = True
+# Hard deadline per district worker — see boardbook/main.py for explanation.
+DISTRICT_TIMEOUT_SECS = 1800  # 30 minutes
 
 drive_service = None
 
@@ -310,6 +314,8 @@ def run_district(
             driver.quit()
         except Exception as e:
             LOGGER.warning(f"  Error quitting driver: {e}")
+        shutil.rmtree(f"/tmp/chrome_profile_{os.getpid()}", ignore_errors=True)
+        shutil.rmtree(f"/tmp/dl_{os.getpid()}", ignore_errors=True)
 
     return meeting_records
 
@@ -326,6 +332,11 @@ def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
     worker_logger = setup_logger(log_level="INFO")
     worker_logger.info(f"[Worker PID {os.getpid()}] Starting: {district} (row {idx})")
 
+    def _timeout_handler(signum, frame):
+        raise TimeoutError(f"District '{district}' exceeded {DISTRICT_TIMEOUT_SECS}s — aborting")
+
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(DISTRICT_TIMEOUT_SECS)
     try:
         load_all_db_credentials()
 
@@ -345,9 +356,14 @@ def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
         )
         return (nces, district, records, None)
 
+    except TimeoutError as e:
+        worker_logger.error(f"[Worker PID {os.getpid()}] ⏰ {e}")
+        return (nces, district, [], str(e))
     except Exception as e:
         worker_logger.error(f"[Worker PID {os.getpid()}] Fatal error for '{district}': {e}")
         return (nces, district, [], str(e))
+    finally:
+        signal.alarm(0)
 
 
 # =============================================================================

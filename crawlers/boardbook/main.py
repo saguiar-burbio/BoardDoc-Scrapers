@@ -9,6 +9,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import time
 import traceback
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -54,6 +55,12 @@ LOGGER = setup_logger(log_level="INFO")
 
 # Tune to available CPU cores / RAM (2 is safe; 4 viable on 8-core / ≥16 GB).
 WORKER_PROCESSES = 2
+
+# Hard deadline per district worker. If a ChromeDriver hang, stalled download,
+# or any other blocking call exceeds this, SIGALRM fires, the worker exits
+# cleanly (Chrome is quit in finally), and the pool slot is freed for the next
+# district — preventing a single stuck worker from triggering the OOM killer.
+DISTRICT_TIMEOUT_SECS = 1800  # 30 minutes
 
 # Global drive_service resolved in __main__ and injected into scraper sub-module.
 drive_service = None
@@ -225,6 +232,11 @@ def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
     worker_logger = setup_logger(log_level="INFO")
     worker_logger.info(f"[Worker PID {os.getpid()}] Starting: {district} (row {idx})")
 
+    def _timeout_handler(signum, frame):
+        raise TimeoutError(f"District '{district}' exceeded {DISTRICT_TIMEOUT_SECS}s — aborting")
+
+    signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(DISTRICT_TIMEOUT_SECS)
     try:
         load_all_db_credentials()
 
@@ -244,9 +256,14 @@ def _worker(task: Tuple) -> Tuple[str, str, List[MeetingRecord], Optional[str]]:
         )
         return (nces, district, records, None)
 
+    except TimeoutError as e:
+        worker_logger.error(f"[Worker PID {os.getpid()}] ⏰ {e}")
+        return (nces, district, [], str(e))
     except Exception as e:
         worker_logger.error(f"[Worker PID {os.getpid()}] Fatal error for '{district}': {e}")
         return (nces, district, [], str(e))
+    finally:
+        signal.alarm(0)  # cancel alarm so it doesn't fire after this worker is reused
 
 
 # ═════════════════════════════════════════════════════════════════════════════

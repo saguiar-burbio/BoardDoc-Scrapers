@@ -39,6 +39,7 @@ from core.database import (
 def _get_folder_id(name: str) -> str:
     """Returns the Drive folder ID for the given folder name from the DB-backed map."""
     return get_drive_folder_map().get(name, "")
+from core.driver import cdp_print_with_timeout
 from core.hashing import (
     compute_sha256_from_file,
     build_minhash
@@ -199,7 +200,7 @@ def convert_url_to_pdf(driver, url: str, output_path: str) -> bool:
             'preferCSSPageSize': True
         }
 
-        result = driver.execute_cdp_cmd("Page.printToPDF", print_options)
+        result = cdp_print_with_timeout(driver, print_options, timeout=60)
         with open(output_path, "wb") as f:
             f.write(base64.b64decode(result['data']))
 

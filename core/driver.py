@@ -7,6 +7,7 @@
 import logging
 import os
 import random
+import threading
 import time
 from typing import Optional
 
@@ -38,6 +39,7 @@ def create_undetected_driver() -> uc.Chrome:
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--js-flags=--max_old_space_size=512')  # cap V8 heap at 512 MB
     options.add_argument('--window-size=1920,1080')
     options.add_argument('--start-maximized')
     options.add_argument('--no-first-run')
@@ -116,6 +118,31 @@ def close_extra_tabs(driver: uc.Chrome, keep_handle: str) -> None:
         driver.switch_to.window(keep_handle)
     except Exception as e:
         LOGGER.warning(f"Failed to cleanly close lingering tabs: {e}")
+
+
+def cdp_print_with_timeout(driver: uc.Chrome, options: dict, timeout: int = 60) -> dict:
+    """
+    Calls Page.printToPDF via CDP with a hard timeout.
+    execute_cdp_cmd() has no built-in timeout — on pages that fail to render it
+    hangs the worker indefinitely. A daemon thread lets us enforce a ceiling.
+    """
+    result: dict = {}
+    exc: list = []
+
+    def _run():
+        try:
+            result["data"] = driver.execute_cdp_cmd("Page.printToPDF", options)
+        except Exception as e:
+            exc.append(e)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        raise TimeoutError(f"Page.printToPDF timed out after {timeout}s")
+    if exc:
+        raise exc[0]
+    return result.get("data", {})
 
 
 def wait_for_download(download_dir: str, timeout: int = 40) -> Optional[str]:
