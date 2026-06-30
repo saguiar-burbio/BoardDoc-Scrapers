@@ -1483,9 +1483,11 @@ def search_and_download_agenda_attachments(
             if any(sig in err_str for sig in (
                 "HTTPConnectionPool", "Max retries exceeded",
                 "Read timed out", "Failed to establish a new connection",
+                "invalid session id",
+                "session deleted",
             )):
                 LOGGER.critical(
-                    f"  💀 ChromeDriver unreachable — aborting district run "
+                    f"  💀 Chrome session dead — aborting span loop "
                     f"(item '{raw_text}'): {type(e).__name__}"
                 )
                 raise

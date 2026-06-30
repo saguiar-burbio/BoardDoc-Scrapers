@@ -474,15 +474,6 @@ def combine_and_upload_documents(
     district_upper = district.upper()
     formatted_date = row_date.strftime("%m-%d-%y")
 
-    if attachment_paths:
-        raw_input_attachment = attachment_paths[0]
-        if raw_input_attachment and os.path.exists(raw_input_attachment):
-            raw_file_hash = compute_sha256_from_file(raw_input_attachment)
-            if db_check_sha256_dupe(raw_file_hash):
-                LOGGER.info(f"   [{district}] | [DUPE] Pristine attachment SHA-256 found — skipping.")
-                meeting_record.dupes += 1
-                return
-
     parts: list = []
     if cover_page_path and os.path.exists(cover_page_path):
         parts.append(cover_page_path)
