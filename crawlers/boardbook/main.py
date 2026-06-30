@@ -34,7 +34,7 @@ from config.settings import (
 )
 from core.gcs import download_blob_to_tmp, upload_file_to_gcs
 from core.models import AttachmentRecord, MeetingRecord
-from core.utils import setup_logger, debug_summarize_run_stats, parse_check_date
+from core.utils import setup_logger, debug_summarize_run_stats, parse_check_date, set_log_prefix, clear_log_prefix
 from core.database import (
     load_all_db_credentials,
     get_all_prompts_df,
@@ -84,6 +84,7 @@ def main_district_pipeline(
 ) -> List[MeetingRecord]:
     """Runs the full BoardBook Premier scrape sequence for a single district."""
 
+    set_log_prefix(district)
     meeting_records: List[MeetingRecord] = []
     chrome_profile_dir = f'/tmp/chrome_profile_{os.getpid()}'
 
@@ -216,6 +217,7 @@ def main_district_pipeline(
         shutil.rmtree(chrome_profile_dir, ignore_errors=True)
         shutil.rmtree(f"/tmp/dl_{os.getpid()}", ignore_errors=True)
         LOGGER.debug(f"[{district}] Chrome process and profile dir cleaned up.")
+        clear_log_prefix()
 
     return meeting_records
 

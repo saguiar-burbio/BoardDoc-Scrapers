@@ -9,7 +9,7 @@ Headless Selenium crawlers for scraping school district board meeting documents 
 | BoardBook Premier | `crawlers/boardbook/` | Parallel (`ProcessPoolExecutor`) |
 | Diligent BoardDocs | `crawlers/diligent/` | Parallel |
 | BoardDocs | `crawlers/boarddocs/` | Parallel |
-| Simbli eBoard | `crawlers/simbli/` | Parallel |
+| Simbli eBoard | `crawlers/simbli/` | Sequential |
 
 ## VM / GitHub Workflow
 
@@ -135,6 +135,7 @@ district_platform_crawlers/
 | Setting | Location | Purpose |
 |---|---|---|
 | `WORKER_PROCESSES` | top of each `main.py` | Parallel Chrome processes |
+| `DISTRICT_TIMEOUT_SECS` | top of each `main.py` | Hard per-district deadline (default 1800s); SIGALRM fires on expiry, worker exits cleanly, pool slot freed |
 | `MODEL_NAME` | `config/settings.py` | Gemini model for classification |
 | `MINHASH_SIM_THRESHOLD` | `config/settings.py` | Soft-dupe rejection ceiling (default 0.95) |
 | `check_date` | District CSV column `"Check Date"` | Per-district cutoff; older meetings are skipped |

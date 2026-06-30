@@ -396,7 +396,6 @@ def _process_single_attachment(
 
             if not res.get("is_minutes", False):
                 LOGGER.info("  ℹ️ AI flagged as non-minutes → returning for merge.")
-                meeting_record.downloaded += 1
                 return filepath
 
             MAPPING = {
@@ -428,7 +427,6 @@ def _process_single_attachment(
 
         else:
             LOGGER.debug(f"  ↩️ Novel, returning for merge: {filepath}")
-            meeting_record.downloaded += 1
             return_path = filepath
 
     except InvalidSessionIdException:

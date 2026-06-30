@@ -47,7 +47,7 @@ from core.gcs import download_blob_to_tmp
 from core.google_auth import get_authenticated_services
 from core.humanize import random_idle
 from core.models import AttachmentRecord, MeetingRecord
-from core.utils import debug_summarize_run_stats, setup_logger, parse_check_date
+from core.utils import debug_summarize_run_stats, setup_logger, parse_check_date, set_log_prefix, clear_log_prefix
 from crawlers.diligent.scraper import search_and_download_agenda_attachments
 
 LOGGER = setup_logger(log_level="INFO")
@@ -129,6 +129,7 @@ def run_district(
     district_config_id: Optional[int] = None,
 ) -> List[MeetingRecord]:
     """Run the full Diligent scrape pipeline for one district."""
+    set_log_prefix(district)
     driver = create_undetected_driver()
     meeting_records: List[MeetingRecord] = []
 
@@ -316,6 +317,7 @@ def run_district(
             LOGGER.warning(f"  Error quitting driver: {e}")
         shutil.rmtree(f"/tmp/chrome_profile_{os.getpid()}", ignore_errors=True)
         shutil.rmtree(f"/tmp/dl_{os.getpid()}", ignore_errors=True)
+        clear_log_prefix()
 
     return meeting_records
 

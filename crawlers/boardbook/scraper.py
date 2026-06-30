@@ -293,7 +293,6 @@ def _process_single_attachment(
             LOGGER.info(f"[AI RESULT] {res}")
 
             if not res.get("is_minutes", False):
-                meeting_record.downloaded += 1
                 return final_path
 
             MAPPING = {"REGULAR": "BOE-REG", "WORK": "BOE-WS", "SPECIAL": "BOE-SP"}
@@ -311,7 +310,6 @@ def _process_single_attachment(
             return None
 
         LOGGER.info(f"[{district}] | [RETURN] Novel file → {final_path}")
-        meeting_record.downloaded += 1
         return final_path
 
     except Exception as e:

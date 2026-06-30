@@ -12,6 +12,30 @@ from typing import Dict, Any, Optional
 LOGGER = logging.getLogger("simbli_minutes")
 
 
+class _ContextFilter(logging.Filter):
+    """Prepends a per-process district prefix to every log record."""
+    def __init__(self):
+        super().__init__()
+        self.prefix = ""
+
+    def filter(self, record):
+        if self.prefix:
+            record.msg = f"[{self.prefix}] {record.msg}"
+        return True
+
+
+_context_filter = _ContextFilter()
+
+
+def set_log_prefix(name: str) -> None:
+    """Call at the start of a district run to label every subsequent log line."""
+    _context_filter.prefix = name
+
+
+def clear_log_prefix() -> None:
+    _context_filter.prefix = ""
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # 1. LOGGING CONFIGURATION ENGINE
 # ═════════════════════════════════════════════════════════════════════════════
@@ -42,6 +66,8 @@ def setup_logger(log_level: str = "INFO", log_file: str = None) -> logging.Logge
     
     logger = logging.getLogger("simbli_minutes")
     logger.setLevel(numeric_level)
+    if not any(isinstance(f, _ContextFilter) for f in logger.filters):
+        logger.addFilter(_context_filter)
     return logger
 
 

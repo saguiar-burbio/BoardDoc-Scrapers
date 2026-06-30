@@ -503,15 +503,8 @@ def combine_and_upload_documents(
 
         file_hash = compute_sha256_from_file(merged_path)
 
-        LOGGER.info(f"   [{district}] | [CONTENT] Running OCR and MinHash checking...")
         text, page_count = extract_text_with_ocr(merged_path)
-
         minhash_obj = build_minhash(text)
-        minhash_is_dupe, matching_link = db_check_minhash_dupe(minhash_obj, sha256_hex=file_hash)
-        if minhash_is_dupe:
-            LOGGER.info(f"   [{district}] | [DUPE] Soft match against: {matching_link}")
-            meeting_record.dupes += 1
-            return
 
         uploaded_successfully = False
 
@@ -737,7 +730,7 @@ def combine_and_upload_documents(
                 elif extracted_cat in (
                     "GOVERNANCE", "NON-RELEVANT", "POLICY", "STUDENT-SERVICES",
                     "PERSONNEL", "LEGAL-POLICY", "FINANCE-OPERATIONS",
-                    "FINANCE-REPORTING", "DISCIPLINE", "CURRICULUM-POLICY"
+                    "FINANCE-REPORTING", "DISCIPLINE", "CURRICULUM-POLICY", "BEHAVIOR",
                 ):
                     folder_id, folder_label = _get_folder_id("GOVERNANCE"), "GOVERNANCE"
                 else:

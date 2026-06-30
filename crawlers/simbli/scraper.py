@@ -970,7 +970,11 @@ def combine_and_upload_documents(
 
                 if extracted_cat == "SUPPORT":
                     folder = _get_folder_id("MANUAL_INTERVENTION")
-                elif extracted_cat in ("GOVERNANCE", "NON-RELEVANT"):
+                elif extracted_cat in (
+                    "GOVERNANCE", "NON-RELEVANT", "POLICY", "STUDENT-SERVICES",
+                    "PERSONNEL", "LEGAL-POLICY", "FINANCE-OPERATIONS",
+                    "FINANCE-REPORTING", "DISCIPLINE", "CURRICULUM-POLICY", "BEHAVIOR",
+                ):
                     folder = _get_folder_id("GOVERNANCE")
                 else:
                     folder = _get_folder_id("SUPPORTING")
